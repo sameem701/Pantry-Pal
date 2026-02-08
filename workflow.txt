@@ -1,0 +1,18 @@
+PANTRYPAL - WEB APPLICATION WORKFLOWS
+=======================================
+
+WORKFLOW 1: USER SETUP & RECIPE DISCOVERY
+------------------------------------------
+[Workflow description to be added by Member 1]
+
+
+
+WORKFLOW 2: INTERACTIVE COOKING & RECIPE CREATION
+---------------------------------------------------
+[Workflow description to be added by Member 2]
+
+
+
+WORKFLOW 3: MEAL PLANNING & SMART FEATURES
+--------------------------------------------
+[Workflow description to be added by Member 3]
