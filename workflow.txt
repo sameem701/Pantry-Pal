@@ -66,9 +66,54 @@ Step-by-step cooking instructions
 
 WORKFLOW 2: INTERACTIVE COOKING & RECIPE CREATION
 ---------------------------------------------------
-[Workflow description to be added by Member 2]
+User Journey: "I want to cook this recipe and maybe create my own"
 
+FEATURES
+1. Interactive Cooking Mode
 
+-Step-by-step interface
+
+-Progress bar
+
+-Timers for each step
+
+-Next/previous buttons
+
+-Mark as completed
+
+2. Post-Cooking Actions
+
+-Rate recipe (1-5 stars)
+
+-Write review
+
+-Save to favorites
+
+-Mark ingredients as used (updates pantry)
+
+3. Create Your Own Recipe
+
+-Add recipe title/description
+
+-Add ingredients with quantities
+
+-Add step-by-step instructions
+
+-Set difficulty/time
+
+-Add dietary tags
+
+-Publish or save as draft
+
+4. View Other Users' Recipes
+
+-Browse community recipes
+
+-Filter by creator
+
+-See ratings/reviews
+
+-Save to your collection
 
 WORKFLOW 3: MEAL PLANNING & SMART FEATURES
 --------------------------------------------
