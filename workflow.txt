@@ -117,4 +117,74 @@ FEATURES
 
 WORKFLOW 3: MEAL PLANNING & SMART FEATURES
 --------------------------------------------
-[Workflow description to be added by Member 3]
+User Journey: "I want to plan my week and get smart suggestions"
+
+FEATURES
+1. Weekly Meal Planner
+   - Calendar view (Sunday-Saturday)
+   - Drag recipes onto days
+   - Color code by meal type (breakfast/lunch/dinner)
+   - Clear/reset planner
+
+2. Shopping List Generator
+   - Auto-generate from meal plan
+   - Combine duplicate ingredients
+   - Categorize (produce, dairy, etc.)
+   - Check off purchased items
+   - Export as text/PDF
+
+3. Simple Nutrition Info 
+   - Basic calorie count per recipe
+   - Protein/carbs/fat display
+   - Weekly total overview
+
+
+4. Smart Suggestions (if time permits)
+   - "What should I cook this week?" button
+   - Suggests recipes based on pantry
+   - Avoids repetition (different cuisines)
+
+
+
+WORKFLOW DESCRIPTION
+Step 1: Access Meal Planner
+- User clicks "Meal Planner" from main menu
+- System shows empty weekly calendar (Sunday to Saturday)
+- Sidebar displays saved/favorite recipes
+
+Step 2: Add Meals to Plan
+Option A: Manual Planning
+- Drag recipes from sidebar to calendar days
+- Drop into breakfast, lunch, or dinner slots
+- Color coding shows meal types
+
+Option B: Smart Suggestions
+- Click "Suggest Meals for Week"
+- System analyzes pantry and preferences
+- Shows 3 meal plan options
+- User selects and applies to calendar
+
+Step 3: Review & Adjust
+- View all planned meals at once
+- See pantry usage indicators
+- Drag to rearrange or swap meals
+- Clear individual days or entire week
+
+Step 4: Generate Shopping List
+- Click "Create Shopping List"
+- System scans all planned recipes
+- Combines duplicate ingredients
+- Groups by food categories
+- Shows what you already have vs need
+
+Step 5: Shop & Execute
+- Take shopping list to store
+- Check off purchased items
+- Return to app, meals are ready to cook
+- Click any planned meal to start cooking mode
+
+Step 6: Track Progress
+- Mark meals as cooked
+- Pantry updates automatically
+- View weekly completion stats
+- Save successful plans as templates
