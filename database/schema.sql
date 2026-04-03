@@ -20,7 +20,7 @@ CREATE TABLE app_users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     skill_level VARCHAR(20) DEFAULT 'Beginner',
-    CONSTRAINT check_skill_level CHECK (skill_level IN ('Beginner', 'Intermediate', 'Advanced'))
+    CONSTRAINT check_skill_level CHECK (skill_level IN ('Beginner', 'Intermediate', 'Advanced')),
     reset_code VARCHAR(6),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -68,6 +68,8 @@ CREATE TABLE preference_food_group (
 CREATE TABLE pantry_items (
     user_id INTEGER NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
     ingredient_id INTEGER NOT NULL REFERENCES ingredients(ingredient_id) ON DELETE CASCADE,
+    quantity DECIMAL(10,2) DEFAULT 0,  
+    unit VARCHAR(20),                   
     PRIMARY KEY (user_id, ingredient_id)
 );
 
@@ -76,13 +78,32 @@ CREATE TABLE recipes (
     recipe_id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
     difficulty VARCHAR(20) DEFAULT 'Medium',
+    cooking_time_min INTEGER NOT NULL,
     CONSTRAINT check_difficulty CHECK (difficulty IN ('Easy', 'Medium', 'Hard'))
     title VARCHAR(255) NOT NULL,
-    cooking_time_min INTEGER NOT NULL,
-    instructions TEXT,
     image_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     
+);
+
+
+CREATE TABLE recipe_instructions (
+    instruction_id SERIAL PRIMARY KEY,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+    step_number INTEGER NOT NULL,
+    instruction_text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(recipe_id, step_number)
+);
+
+
+CREATE TABLE cooking_sessions (
+    session_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+    current_step INTEGER DEFAULT 1,  -- Track which step they're on
+    is_completed BOOLEAN DEFAULT FALSE,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create recipe_ingredients table
@@ -205,7 +226,7 @@ INSERT INTO units (unit_id, unit_name) VALUES
 (5, 'cups'),
 (6, 'tablespoons'),
 (7, 'teaspoons'),
-(8, 'pieces'),
+(8, 'count'),
 (9, 'pinch'),
 (10, 'ounces');
 
