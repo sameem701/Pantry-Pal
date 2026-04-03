@@ -160,11 +160,63 @@ CREATE TABLE user_cuisine_preference (
     PRIMARY KEY (user_id, cuisine_id)
 );
 
--- 3. Bridge table for recipe cuisines (Workflow 1 & 2)
+-- 3. Bridge table for recipe cuisines 
 CREATE TABLE recipe_cuisines (
     recipe_id INTEGER NOT NULL REFERENCES recipes(recipe_id) ON DELETE CASCADE,
     cuisine_id INTEGER NOT NULL REFERENCES cuisines(cuisine_id) ON DELETE CASCADE,
     PRIMARY KEY (recipe_id, cuisine_id)
+);
+
+
+
+-- Workflow 3
+
+-- Active meal plans (auto-delete after week ends)
+CREATE TABLE meal_plans (
+    plan_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES app_users(user_id),
+    week_start DATE NOT NULL,
+    week_end DATE NOT NULL,
+    name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, week_start)
+);
+
+-- Active meal slots
+CREATE TABLE meal_plan_items (
+    plan_id INTEGER NOT NULL REFERENCES meal_plans(plan_id) ON DELETE CASCADE,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(recipe_id),
+    day_of_week VARCHAR(10) NOT NULL,
+     is_cooked BOOLEAN DEFAULT FALSE,
+    meal_type VARCHAR(10) NOT NULL,
+    PRIMARY KEY (plan_id, day_of_week, meal_type)
+);
+
+-- Templates (permanent)
+CREATE TABLE saved_plan_templates (
+    template_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES app_users(user_id),
+    name VARCHAR(100) NOT NULL,
+    meal_data JSON NOT NULL,  -- Full copy of the plan structure
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- Shopping list container
+CREATE TABLE shopping_lists (
+    list_id SERIAL PRIMARY KEY,
+    plan_id INTEGER NOT NULL REFERENCES meal_plans(plan_id) ON DELETE CASCADE,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Shopping list items
+CREATE TABLE shopping_list_items (
+    list_id INTEGER NOT NULL REFERENCES shopping_lists(list_id) ON DELETE CASCADE,
+    ingredient_name VARCHAR(255) NOT NULL,
+    quantity VARCHAR(50),
+    category VARCHAR(50),
+    is_checked BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (list_id, ingredient_name)
 );
 
 -- Indexes for performance
