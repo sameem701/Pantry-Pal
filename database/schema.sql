@@ -79,14 +79,19 @@ CREATE TABLE recipes (
     user_id INTEGER NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
     difficulty VARCHAR(20) DEFAULT 'Medium',
     cooking_time_min INTEGER NOT NULL,
-    CONSTRAINT check_difficulty CHECK (difficulty IN ('Easy', 'Medium', 'Hard'))
+    CONSTRAINT check_difficulty CHECK (difficulty IN ('Easy', 'Medium', 'Hard')),
     title VARCHAR(255) NOT NULL,
     image_url VARCHAR(500),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    calories INTEGER DEFAULT 0,
-    protein DECIMAL(10,2) DEFAULT 0,
-    carbs DECIMAL(10,2) DEFAULT 0,
-    fat DECIMAL(10,2) DEFAULT 0
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE recipe_nutrition (
+    recipe_id INTEGER PRIMARY KEY REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+    calories INTEGER,
+    protein_g DECIMAL(5,2),
+    carbs_g DECIMAL(5,2),
+    fat_g DECIMAL(5,2)
 );
 
 
