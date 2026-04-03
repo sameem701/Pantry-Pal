@@ -82,8 +82,11 @@ CREATE TABLE recipes (
     CONSTRAINT check_difficulty CHECK (difficulty IN ('Easy', 'Medium', 'Hard'))
     title VARCHAR(255) NOT NULL,
     image_url VARCHAR(500),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    calories INTEGER DEFAULT 0,
+    protein DECIMAL(10,2) DEFAULT 0,
+    carbs DECIMAL(10,2) DEFAULT 0,
+    fat DECIMAL(10,2) DEFAULT 0
 );
 
 
@@ -183,7 +186,7 @@ CREATE TABLE meal_plans (
 );
 
 -- Active meal slots
-CREATE TABLE meal_plan_items (
+CREATE TABLE meal_plan_recipes (
     plan_id INTEGER NOT NULL REFERENCES meal_plans(plan_id) ON DELETE CASCADE,
     recipe_id INTEGER NOT NULL REFERENCES recipes(recipe_id),
     day_of_week VARCHAR(10) NOT NULL,
