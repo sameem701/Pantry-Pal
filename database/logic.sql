@@ -1684,7 +1684,7 @@ CREATE OR REPLACE FUNCTION save_ai_shopping_list(
 RETURNS JSON AS $$
 DECLARE
     v_list_id INTEGER;
-    v_item RECORD;
+    v_item JSON;
 BEGIN
     -- Verify plan ownership
     IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
@@ -1700,7 +1700,7 @@ BEGIN
     RETURNING list_id INTO v_list_id;
 
     -- Insert AI-processed items
-    FOR v_item IN SELECT * FROM json_array_elements(p_items)
+    FOR v_item IN SELECT value FROM json_array_elements(p_items)
     LOOP
         INSERT INTO shopping_list_items (
             list_id, 

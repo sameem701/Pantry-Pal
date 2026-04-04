@@ -8,9 +8,31 @@ import psycopg2
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load environment variables from .env file in parent directory
-env_path = Path(__file__).parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+
+def find_env_path():
+    """Find the .env file anywhere under the project root."""
+    project_root = Path(__file__).resolve().parent.parent
+
+    preferred_paths = [
+        project_root / ".env",
+        project_root / "backend" / ".env",
+        Path(__file__).resolve().parent / ".env",
+    ]
+
+    for env_path in preferred_paths:
+        if env_path.is_file():
+            return env_path
+
+    for env_path in project_root.rglob(".env"):
+        if env_path.is_file():
+            return env_path
+
+    return None
+
+
+env_path = find_env_path()
+if env_path:
+    load_dotenv(dotenv_path=env_path)
 
 
 def get_db_connection():
@@ -18,7 +40,8 @@ def get_db_connection():
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        raise ValueError("DATABASE_URL not found in .env file")
+        env_location = f" at {env_path}" if env_path else ""
+        raise ValueError(f"DATABASE_URL not found in any .env file{env_location}")
 
     print("Connecting to Supabase database...")
     conn = psycopg2.connect(database_url)
