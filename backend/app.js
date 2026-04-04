@@ -1,4 +1,5 @@
 const express = require('express');
+const mealPlannerRoutes = require('./routes/mealPlannerRoutes');
 
 const app = express();
 
@@ -11,6 +12,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK' });
 });
 
-// TODO: Add routes here
+// Workflow 3 routes
+app.use('/api/meal-plans', mealPlannerRoutes);
 
 module.exports = app;
