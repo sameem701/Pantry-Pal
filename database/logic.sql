@@ -1506,7 +1506,7 @@ BEGIN
         WHERE
             r.status = 'published'
             -- Not already planned this week
-            r.recipe_id NOT IN (
+            AND r.recipe_id NOT IN (
                 SELECT recipe_id FROM meal_plan_recipes WHERE plan_id = p_plan_id
             )
             -- Respect dietary restrictions
