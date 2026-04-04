@@ -1,0 +1,79 @@
+You’re right, and this updated definition changes what Workflow 3 includes; I’ll map your exact workflow to what is already in your database and what still needs backend/UI implementation.
+
+Searched for regex `SECTION 7|SECTION 8|SECTION 9|SECTION 10|CREATE OR REPLACE FUNCTION (create_meal_plan|get_meal_plan|add_meal_to_plan|remove_meal_from_plan|clear_meal_plan_day|clear_meal_plan_week|toggle_meal_cooked|suggest_meals_for_week|get_missing_ingredients|save_ai_shopping_list|toggle_shopping_item|save_plan_template|load_plan_template|get_plan_templates|delete_plan_template|get_recipe_nutrition|get_weekly_nutrition)` (`**/database/logic.sql`), 13 results
+
+I found the core Workflow 3 sections; next I’ll read those blocks to list every feature/function and highlight any gaps against your updated workflow.
+
+Read [](file:///c%3A/Users/samee/Documents/projects/PantryPal/database/logic.sql#1239-1239), lines 1239 to 1537
+
+Read [](file:///c%3A/Users/samee/Documents/projects/PantryPal/database/logic.sql#1538-1538), lines 1538 to 1884
+
+Perfect, this is the correct Workflow 3 scope.  
+Based on your SQL, here is what you currently have vs what you still need to implement.
+
+**Workflow 3 Features Already Present In DB**
+1. Weekly plan creation/fetch for a given week.
+2. Add or swap meals into breakfast/lunch/dinner slots.
+3. Remove a meal from a slot.
+4. Clear full meal plan.
+5. Get full weekly plan ordered Sunday to Saturday.
+6. Mark meal as cooked and auto-deduct pantry.
+7. Smart weekly suggestions based on pantry + dietary restrictions + reduced cuisine repetition.
+8. Shopping list raw missing-ingredient extraction.
+9. Save AI-normalized shopping list.
+10. Toggle purchased/checked shopping item.
+11. Save plan as template.
+12. Load template into a plan.
+13. List and delete templates.
+14. Per-recipe nutrition.
+15. Weekly nutrition totals + daily breakdown.
+
+You can see these under Section 7-10 in logic.sql.
+
+**Important Gap Vs Your Workflow Document**
+1. Your document says smart suggestions should show 3 plan options.
+2. Current SQL returns one weekly option only (`mode: single_week_option`).
+3. If you want 3 options, that function must be changed.
+
+**What You Need To Build In Backend For Workflow 3**
+1. Meal planner endpoints:
+- get/create week plan
+- add meal
+- remove meal
+- clear plan
+- get plan
+- mark cooked
+- suggest meals
+2. Shopping list endpoints:
+- get missing ingredients
+- save shopping list
+- toggle item checked
+- export endpoint placeholder (txt/pdf later)
+3. Template endpoints:
+- save template
+- load template
+- list templates
+- delete template
+4. Nutrition endpoints:
+- get recipe nutrition
+- get weekly nutrition
+5. Controller logic:
+- validate inputs
+- call SQL functions
+- map DB success/error JSON to HTTP status codes
+6. Frontend-specific features (not DB):
+- calendar drag-drop
+- meal type color coding
+- sidebar recipes
+- checkboxes in shopping list
+- export UI/download
+
+**Security Fixes You Should Do Before UI Testing**
+1. Enforce plan/list ownership in:
+- add meal
+- remove meal
+- suggest meals
+- get missing ingredients
+- toggle shopping item
+
+If you want, I can now scaffold only Workflow 3 backend routes/controllers (minimal skeleton only, no extra modules).

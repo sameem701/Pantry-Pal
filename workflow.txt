@@ -3,15 +3,117 @@ PANTRYPAL - WEB APPLICATION WORKFLOWS
 
 WORKFLOW 1: USER SETUP & RECIPE DISCOVERY
 ------------------------------------------
-[Workflow description to be added by Member 1]
+PANTRYPAL – WEB APPLICATION WORKFLOWS
+WORKFLOW 1: USER & PANTRY MANAGEMENT + RECIPE SEARCH
+
+User Journey: “I want to find recipes I can make right now”
+
+FEATURES
+
+User System
+
+Register / Login using email & password
+
+Create and manage user profile
+
+Set dietary restrictions (vegan, vegetarian, gluten-free, allergies)
+
+Select preferred cuisines (Italian, Mexican, Asian, etc.)
+
+Define cooking skill level (Beginner, Intermediate, Advanced)
+
+Pantry Management
+
+Add ingredients manually
+
+Search and select ingredients from a predefined database
+
+Assign quantities to each ingredient
+
+Categorize ingredients (Fridge, Pantry, Freezer)
+
+Edit ingredient details (quantity, category)
+
+Remove ingredients from pantry
+
+Recipe Search & Filtering
+
+Search recipes based on available pantry ingredients
+
+Filter recipes by dietary restrictions
+
+Filter by cuisine type
+
+Filter by difficulty level
+
+Sort results by “most ingredients matching”
+
+View recipes that require minimal missing ingredients
+
+Recipe Viewing
+
+View complete recipe details
+
+Display ingredient list with required quantities
+
+Highlight missing vs available ingredients
+
+Step-by-step cooking instructions
+
+“Start Cooking” button to enter Interactive Cooking Mode
 
 
 
 WORKFLOW 2: INTERACTIVE COOKING & RECIPE CREATION
 ---------------------------------------------------
-[Workflow description to be added by Member 2]
+User Journey: "I want to cook this recipe and maybe create my own"
 
+FEATURES
+1. Interactive Cooking Mode
 
+-Step-by-step interface
+
+-Progress bar
+
+-Timers for each step
+
+-Next/previous buttons
+
+-Mark as completed
+
+2. Post-Cooking Actions
+
+-Rate recipe (1-5 stars)
+
+-Write review
+
+-Save to favorites
+
+-Mark ingredients as used (updates pantry)
+
+3. Create Your Own Recipe
+
+-Add recipe title/description
+
+-Add ingredients with quantities
+
+-Add step-by-step instructions
+
+-Set difficulty/time
+
+-Add dietary tags
+
+-Publish or save as draft
+
+4. View Other Users' Recipes
+
+-Browse community recipes
+
+-Filter by creator
+
+-See ratings/reviews
+
+-Save to your collection
 
 WORKFLOW 3: MEAL PLANNING & SMART FEATURES
 --------------------------------------------
