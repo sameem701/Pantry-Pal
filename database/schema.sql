@@ -1,3 +1,4 @@
+
 -- ============================================================
 --  PANTRYPAL – COMPLETE SCHEMA
 --  PostgreSQL / Supabase

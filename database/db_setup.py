@@ -8,9 +8,31 @@ import psycopg2
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Load environment variables from .env file in parent directory
-env_path = Path(__file__).parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
+
+def find_env_path():
+    """Find the .env file anywhere under the project root."""
+    project_root = Path(__file__).resolve().parent.parent
+
+    preferred_paths = [
+        project_root / ".env",
+        project_root / "backend" / ".env",
+        Path(__file__).resolve().parent / ".env",
+    ]
+
+    for env_path in preferred_paths:
+        if env_path.is_file():
+            return env_path
+
+    for env_path in project_root.rglob(".env"):
+        if env_path.is_file():
+            return env_path
+
+    return None
+
+
+env_path = find_env_path()
+if env_path:
+    load_dotenv(dotenv_path=env_path)
 
 
 def get_db_connection():
@@ -18,7 +40,8 @@ def get_db_connection():
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        raise ValueError("DATABASE_URL not found in .env file")
+        env_location = f" at {env_path}" if env_path else ""
+        raise ValueError(f"DATABASE_URL not found in any .env file{env_location}")
 
     print("Connecting to Supabase database...")
     conn = psycopg2.connect(database_url)
@@ -62,25 +85,41 @@ def execute_sql_file(conn, sql_file_path):
         cursor.close()
 
 
+def get_sql_files_in_order(sql_dir):
+    """Return all .sql files in execution order: schema.sql first, then others alphabetically."""
+    sql_files = sorted(sql_dir.glob("*.sql"), key=lambda p: p.name.lower())
+
+    if not sql_files:
+        return []
+
+    schema_first = [p for p in sql_files if p.name.lower() == "schema.sql"]
+    rest = [p for p in sql_files if p.name.lower() != "schema.sql"]
+    return schema_first + rest
+
+
 def main():
     """Main function to set up the database"""
     try:
         # Connect to database
         conn = get_db_connection()
 
-        # Path to schema.sql file
-        backend_dir = Path(__file__).parent
-        schema_file = backend_dir / "schema.sql"
+        # Discover SQL files in this directory
+        sql_dir = Path(__file__).parent
+        sql_files = get_sql_files_in_order(sql_dir)
 
-        # Check if schema file exists
-        if not schema_file.exists():
-            print(f"✗ Schema file not found: {schema_file}")
-            raise FileNotFoundError("schema.sql file is missing")
+        if not sql_files:
+            print(f"✗ No .sql files found in: {sql_dir}")
+            raise FileNotFoundError("No SQL files found")
 
         print(f"\nSetting up PantryPal database...")
 
-        # Execute the schema file
-        execute_sql_file(conn, schema_file)
+        print("\nSQL execution order:")
+        for sql_file in sql_files:
+            print(f"  - {sql_file.name}")
+
+        # Execute all SQL files in order
+        for sql_file in sql_files:
+            execute_sql_file(conn, sql_file)
 
         # Close connection
         conn.close()

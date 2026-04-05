@@ -1,3 +1,4 @@
+
 -- ============================================================
 --  PANTRYPAL – COMPLETE LOGIC  (Functions & Procedures)
 --  PostgreSQL / Supabase
@@ -1239,6 +1240,39 @@ $$ LANGUAGE plpgsql;
 --  SECTION 7: MEAL PLANNING
 -- ============================================================
 
+-- 7.0  Create a new weekly plan (strict create)
+CREATE OR REPLACE FUNCTION create_meal_plan(
+    p_user_id    INTEGER,
+    p_week_start DATE,
+    p_name       VARCHAR(100) DEFAULT NULL
+)
+RETURNS JSON AS $$
+DECLARE v_plan_id INTEGER;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM app_users WHERE user_id = p_user_id) THEN
+        RETURN json_build_object('success', false, 'message', 'User not found');
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM meal_plans
+        WHERE user_id = p_user_id AND week_start = p_week_start
+    ) THEN
+        RETURN json_build_object('success', false, 'message', 'Meal plan already exists for this week');
+    END IF;
+
+    INSERT INTO meal_plans (user_id, week_start, week_end, name)
+    VALUES (
+        p_user_id,
+        p_week_start,
+        (p_week_start + INTERVAL '6 days')::DATE,
+        p_name
+    )
+    RETURNING plan_id INTO v_plan_id;
+
+    RETURN json_build_object('success', true, 'plan_id', v_plan_id);
+END;
+$$ LANGUAGE plpgsql;
+
 -- 7.1  Get existing plan for week or create a new one
 CREATE OR REPLACE FUNCTION get_or_create_meal_plan(
     p_user_id    INTEGER,
@@ -1426,7 +1460,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- 7.7  Smart meal suggestions for the week
---      Returns ONE weekly option (up to 7 recipes by default):
+--      Returns THREE weekly options (up to 7 recipes each by default):
 --        - published recipes only
 --        - excludes recipes already in the selected plan
 --        - respects dietary restrictions
@@ -1473,7 +1507,7 @@ BEGIN
         WHERE
             r.status = 'published'
             -- Not already planned this week
-            r.recipe_id NOT IN (
+            AND r.recipe_id NOT IN (
                 SELECT recipe_id FROM meal_plan_recipes WHERE plan_id = p_plan_id
             )
             -- Respect dietary restrictions
@@ -1489,17 +1523,26 @@ BEGIN
         GROUP BY r.recipe_id, r.title, r.difficulty,
                  r.cooking_time_min, r.image_url, rs.average_rating
     ),
+    option_seed AS (
+        SELECT generate_series(1, 3) AS option_idx
+    ),
     ranked AS (
         SELECT
+            os.option_idx,
             cr.*,
             ROW_NUMBER() OVER (
-                PARTITION BY cr.primary_cuisine
-                ORDER BY cr.missing ASC, cr.average_rating DESC, cr.recipe_id
+                PARTITION BY os.option_idx, cr.primary_cuisine
+                ORDER BY
+                    cr.missing ASC,
+                    cr.average_rating DESC,
+                    md5(cr.recipe_id::TEXT || '-' || os.option_idx::TEXT)
             ) AS cuisine_rank
         FROM candidate_recipes cr
+        CROSS JOIN option_seed os
     ),
-    final_pick AS (
+    picked AS (
         SELECT
+            option_idx,
             recipe_id,
             title,
             difficulty,
@@ -1513,20 +1556,58 @@ BEGIN
             CASE
                 WHEN total_ingredients = 0 THEN 0
                 ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1)
-            END AS match_percent
+            END AS match_percent,
+            ROW_NUMBER() OVER (
+                PARTITION BY option_idx
+                ORDER BY missing ASC, average_rating DESC, cuisine_rank ASC, recipe_id
+            ) AS option_rank
         FROM ranked
         WHERE cuisine_rank <= 2
-        ORDER BY 
-            missing ASC,
-            average_rating DESC
-        LIMIT p_days
+    ),
+    final_pick AS (
+        SELECT *
+        FROM picked
+        WHERE option_rank <= p_days
+    ),
+    option_lists AS (
+        SELECT
+            os.option_idx,
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'recipe_id', fp.recipe_id,
+                        'title', fp.title,
+                        'difficulty', fp.difficulty,
+                        'cooking_time_min', fp.cooking_time_min,
+                        'image_url', fp.image_url,
+                        'average_rating', fp.average_rating,
+                        'total_ingredients', fp.total_ingredients,
+                        'matched', fp.matched,
+                        'missing', fp.missing,
+                        'primary_cuisine', fp.primary_cuisine,
+                        'match_percent', fp.match_percent
+                    )
+                    ORDER BY fp.option_rank
+                ) FILTER (WHERE fp.recipe_id IS NOT NULL),
+                '[]'::JSON
+            ) AS meals
+        FROM option_seed os
+        LEFT JOIN final_pick fp ON fp.option_idx = os.option_idx
+        GROUP BY os.option_idx
     )
-    SELECT json_agg(row_to_json(final_pick)) INTO v_result
-    FROM final_pick;
+    SELECT json_agg(
+        json_build_object(
+            'option_number', option_idx,
+            'meals', meals
+        )
+        ORDER BY option_idx
+    )
+    INTO v_result
+    FROM option_lists;
 
     RETURN json_build_object(
         'success', true,
-        'mode', 'single_week_option',
+        'mode', 'three_week_options',
         'days_requested', p_days,
         'data', COALESCE(v_result, '[]'::JSON)
     );
@@ -1604,7 +1685,7 @@ CREATE OR REPLACE FUNCTION save_ai_shopping_list(
 RETURNS JSON AS $$
 DECLARE
     v_list_id INTEGER;
-    v_item RECORD;
+    v_item JSON;
 BEGIN
     -- Verify plan ownership
     IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
@@ -1620,7 +1701,7 @@ BEGIN
     RETURNING list_id INTO v_list_id;
 
     -- Insert AI-processed items
-    FOR v_item IN SELECT * FROM json_array_elements(p_items)
+    FOR v_item IN SELECT value FROM json_array_elements(p_items)
     LOOP
         INSERT INTO shopping_list_items (
             list_id, 
