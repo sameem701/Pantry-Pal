@@ -14,6 +14,19 @@ const pantryController = require('../controllers/pantryController');
 router.post('/', pantryController.createPantryItem);
 
 /**
+ * GET /api/pantry/ingredients/all
+ * Get all available ingredients
+ */
+router.get('/ingredients/all', pantryController.listIngredients);
+
+/**
+ * GET /api/pantry/ingredients/search?q=term
+ * Search ingredients by name
+ * Query: q (search term)
+ */
+router.get('/ingredients/search', pantryController.searchIngredientOptions);
+
+/**
  * GET /api/pantry/:user_id
  * Get all pantry items for a user
  * Params: user_id
@@ -34,22 +47,5 @@ router.put('/:user_id/:ingredient_id', pantryController.updatePantryItem);
  * Params: user_id, ingredient_id
  */
 router.delete('/:user_id/:ingredient_id', pantryController.deletePantryItem);
-
-// ============================================================
-// INGREDIENT MANAGEMENT ROUTES
-// ============================================================
-
-/**
- * GET /api/pantry/ingredients/all
- * Get all available ingredients
- */
-router.get('/ingredients/all', pantryController.listIngredients);
-
-/**
- * GET /api/pantry/ingredients/search?q=term
- * Search ingredients by name
- * Query: q (search term)
- */
-router.get('/ingredients/search', pantryController.searchIngredientOptions);
 
 module.exports = router;

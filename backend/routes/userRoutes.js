@@ -36,6 +36,19 @@ router.post('/login', userController.login);
  * Get user profile
  * Params: id (user_id)
  */
+router.get('/preferences/dietary', userController.getDietaryPreferenceOptions);
+
+/**
+ * GET /api/users/preferences/cuisines
+ * Get all available cuisines
+ */
+router.get('/preferences/cuisines', userController.getCuisineOptions);
+
+/**
+ * GET /api/users/:id
+ * Get user profile
+ * Params: id (user_id)
+ */
 router.get('/:id', userController.getProfile);
 
 /**
@@ -45,22 +58,6 @@ router.get('/:id', userController.getProfile);
  * Body: { skill_level, dietary_preferences, cuisine_preferences }
  */
 router.put('/:id', userController.updateProfile);
-
-// ============================================================
-// USER PREFERENCES ROUTES
-// ============================================================
-
-/**
- * GET /api/users/preferences/dietary
- * Get all available dietary preferences
- */
-router.get('/preferences/dietary', userController.getDietaryPreferenceOptions);
-
-/**
- * GET /api/users/preferences/cuisines
- * Get all available cuisines
- */
-router.get('/preferences/cuisines', userController.getCuisineOptions);
 
 // ============================================================
 // PASSWORD RESET ROUTES

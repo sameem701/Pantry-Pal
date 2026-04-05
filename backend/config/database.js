@@ -18,6 +18,7 @@ const closePool = async () => {
 };
 
 module.exports = {
+  pool,
   query,
   closePool
 };

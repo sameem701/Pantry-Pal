@@ -1,4 +1,7 @@
 const express = require('express');
+const userRoutes = require('./routes/userRoutes');
+const pantryRoutes = require('./routes/pantryRoutes');
+const recipeRoutes = require('./routes/recipeRoutes');
 const mealPlannerRoutes = require('./routes/mealPlannerRoutes');
 
 const app = express();
@@ -14,5 +17,8 @@ app.get('/api/health', (req, res) => {
 
 // Workflow 3 routes
 app.use('/api/meal-plans', mealPlannerRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/pantry', pantryRoutes);
+app.use('/api/recipes', recipeRoutes);
 
 module.exports = app;
