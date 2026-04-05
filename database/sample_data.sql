@@ -3,28 +3,232 @@
 --  Populate tables needed for Workflow 3 testing
 -- ============================================================
 
--- Clear existing data if needed (tables drop in dependency order)
--- TRUNCATE TABLE shopping_list_items CASCADE;
--- TRUNCATE TABLE shopping_lists CASCADE;
--- TRUNCATE TABLE meal_plan_recipes CASCADE;
--- TRUNCATE TABLE meal_plans CASCADE;
--- TRUNCATE TABLE pantry_items CASCADE;
--- TRUNCATE TABLE recipe_dietary_tags CASCADE;
--- TRUNCATE TABLE recipe_cuisines CASCADE;
--- TRUNCATE TABLE recipe_ingredients CASCADE;
--- TRUNCATE TABLE recipe_instructions CASCADE;
--- TRUNCATE TABLE recipe_nutrition CASCADE;
--- TRUNCATE TABLE recipes CASCADE;
--- TRUNCATE TABLE favourites CASCADE;
--- TRUNCATE TABLE reviews CASCADE;
--- TRUNCATE TABLE user_cuisine_preference CASCADE;
--- TRUNCATE TABLE user_preference CASCADE;
--- TRUNCATE TABLE app_users CASCADE;
+-- Clear existing data so the seed can be rerun safely.
+truncate table shopping_list_items cascade;
+truncate table shopping_lists cascade;
+truncate table saved_plan_templates cascade;
+truncate table meal_plan_recipes cascade;
+truncate table meal_plans cascade;
+truncate table cooking_sessions cascade;
+truncate table recipe_dietary_tags cascade;
+truncate table recipe_cuisines cascade;
+truncate table user_cuisine_preference cascade;
+truncate table recipe_ingredients cascade;
+truncate table recipe_instructions cascade;
+truncate table recipe_nutrition cascade;
+truncate table recipe_stats cascade;
+truncate table recipes cascade;
+truncate table pantry_items cascade;
+truncate table preference_food_group cascade;
+truncate table user_preference cascade;
+truncate table favourites cascade;
+truncate table reviews cascade;
+truncate table dietary_preferences cascade;
+truncate table ingredients cascade;
+truncate table cuisines cascade;
+truncate table units cascade;
+truncate table temp_users cascade;
+truncate table app_users cascade;
 
 
 -- ============================================================
 --  TEST USERS
 -- ============================================================
+
+insert into ingredients (
+   ingredient_id,
+   ingredient_name,
+   category
+) values ( 1,
+           'Chicken Breast',
+           'Protein' ),( 2,
+                         'Beef',
+                         'Protein' ),( 3,
+                                       'Salmon',
+                                       'Protein' ),( 4,
+                                                     'Eggs',
+                                                     'Dairy' ),( 5,
+                                                                 'Milk',
+                                                                 'Dairy' ),( 6,
+                                                                             'Cheese',
+                                                                             'Dairy' ),( 7,
+                                                                                         'Flour',
+                                                                                         'Pantry' ),( 8,
+                                                                                                      'Rice',
+                                                                                                      'Grain' ),( 9,
+                                                                                                                  'Tomato',
+                                                                                                                  'Produce' )
+                                                                                                                  ,( 10,
+                                                                                                                            'Onion'
+                                                                                                                            ,
+                                                                                                                            'Produce'
+                                                                                                                            )
+                                                                                                                            ,
+                                                                                                                            (
+                                                                                                                            11
+                                                                                                                            ,
+                                                                                                                                      'Garlic'
+                                                                                                                                      ,
+                                                                                                                                      'Produce'
+                                                                                                                                      )
+                                                                                                                                      ,
+                                                                                                                                      (
+                                                                                                                                      12
+                                                                                                                                      ,
+                                                                                                                                                'Potato'
+                                                                                                                                                ,
+                                                                                                                                                'Produce'
+                                                                                                                                                )
+                                                                                                                                                ,
+                                                                                                                                                (
+                                                                                                                                                13
+                                                                                                                                                ,
+                                                                                                                                                          'Carrot'
+                                                                                                                                                          ,
+                                                                                                                                                          'Produce'
+                                                                                                                                                          )
+                                                                                                                                                          ,
+                                                                                                                                                          (
+                                                                                                                                                          14
+                                                                                                                                                          ,
+                                                                                                                                                                    'Pasta'
+                                                                                                                                                                    ,
+                                                                                                                                                                    'Grain'
+                                                                                                                                                                    )
+                                                                                                                                                                    ,
+                                                                                                                                                                    (
+                                                                                                                                                                    15
+                                                                                                                                                                    ,
+                                                                                                                                                                            'Bread'
+                                                                                                                                                                            ,
+                                                                                                                                                                            'Bakery'
+                                                                                                                                                                            )
+                                                                                                                                                                            ,
+                                                                                                                                                                            (
+                                                                                                                                                                            16
+                                                                                                                                                                            ,
+                                                                                                                                                                                     'Lettuce'
+                                                                                                                                                                                     ,
+                                                                                                                                                                                     'Produce'
+                                                                                                                                                                                     )
+                                                                                                                                                                                     ,
+                                                                                                                                                                                     (
+                                                                                                                                                                                     17
+                                                                                                                                                                                     ,
+                                                                                                                                                                                               'Cucumber'
+                                                                                                                                                                                               ,
+                                                                                                                                                                                               'Produce'
+                                                                                                                                                                                               )
+                                                                                                                                                                                               ,
+                                                                                                                                                                                               (
+                                                                                                                                                                                               18
+                                                                                                                                                                                               ,
+                                                                                                                                                                                                         'Olive Oil'
+                                                                                                                                                                                                         ,
+                                                                                                                                                                                                         'Pantry'
+                                                                                                                                                                                                         )
+                                                                                                                                                                                                         ,
+                                                                                                                                                                                                         (
+                                                                                                                                                                                                         19
+                                                                                                                                                                                                         ,
+                                                                                                                                                                                                                  'Butter'
+                                                                                                                                                                                                                  ,
+                                                                                                                                                                                                                  'Dairy'
+                                                                                                                                                                                                                  )
+                                                                                                                                                                                                                  ,
+                                                                                                                                                                                                                  (
+                                                                                                                                                                                                                  20
+                                                                                                                                                                                                                  ,
+                                                                                                                                                                                                                          'Soy Sauce'
+                                                                                                                                                                                                                          ,
+                                                                                                                                                                                                                          'Pantry'
+                                                                                                                                                                                                                          )
+                                                                                                                                                                                                                          ,
+                                                                                                                                                                                                                          (
+                                                                                                                                                                                                                          21
+                                                                                                                                                                                                                          ,
+                                                                                                                                                                                                                                   'Salt'
+                                                                                                                                                                                                                                   ,
+                                                                                                                                                                                                                                   'Pantry'
+                                                                                                                                                                                                                                   )
+                                                                                                                                                                                                                                   ;
+
+insert into cuisines (
+   cuisine_id,
+   name
+) values ( 1,
+           'Italian' ),( 2,
+                         'Mexican' ),( 3,
+                                       'Chinese' ),( 4,
+                                                     'Indian' ),( 5,
+                                                                  'Thai' ),( 6,
+                                                                             'Japanese' ),( 7,
+                                                                                            'American' ),( 8,
+                                                                                                           'Greek' ),( 9,
+                                                                                                                       'Mediterranean'
+                                                                                                                       ),( 10
+                                                                                                                       ,
+                                                                                                                                       'French'
+                                                                                                                                       )
+                                                                                                                                       ,
+                                                                                                                                       (
+                                                                                                                                       11
+                                                                                                                                       ,
+                                                                                                                                                'Lebanese'
+                                                                                                                                                )
+                                                                                                                                                ;
+
+insert into dietary_preferences (
+   preference_id,
+   preference_name,
+   preference_type
+) values ( 1,
+           'Vegetarian',
+           'Restrictions' ),( 2,
+                              'Vegan',
+                              'Restrictions' ),( 3,
+                                                 'Dairy-Free',
+                                                 'Restrictions' ),( 4,
+                                                                    'Gluten-Free',
+                                                                    'Restrictions' );
+
+insert into preference_food_group (
+   preference_id,
+   ingredient_id,
+   allowed
+) values ( 1,
+           1,
+           0 ),( 1,
+                 2,
+                 0 ),( 1,
+                       3,
+                       0 ),( 2,
+                             1,
+                             0 ),( 2,
+                                   2,
+                                   0 ),( 2,
+                                         3,
+                                         0 ),( 2,
+                                               4,
+                                               0 ),( 2,
+                                                     5,
+                                                     0 ),( 2,
+                                                           6,
+                                                           0 ),( 2,
+                                                                 19,
+                                                                 0 ),( 3,
+                                                                       5,
+                                                                       0 ),( 3,
+                                                                             6,
+                                                                             0 ),( 3,
+                                                                                   19,
+                                                                                   0 ),( 4,
+                                                                                         7,
+                                                                                         0 ),( 4,
+                                                                                               14,
+                                                                                               0 ),( 4,
+                                                                                                     15,
+                                                                                                     0 );
 
 insert into app_users (
    email,
