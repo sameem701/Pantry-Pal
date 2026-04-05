@@ -1,38 +1,13 @@
-# Dependencies
 node_modules/
-npm-debug.log
-yarn-error.log
-
-# Environment variables
 .env
+.DS_Store
+*.log
+venv/
 .env.local
 .env.*.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Logs
-logs/
-*.log
-
-# Build outputs
 dist/
 build/
-
-# Testing
+.DS_Store
+.vscode/
+.idea/
 coverage/
-.nyc_output/
-
-# Misc
-.cache/
-
-venv/

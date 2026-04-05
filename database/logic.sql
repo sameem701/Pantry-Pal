@@ -1,4 +1,3 @@
-
 -- ============================================================
 --  PANTRYPAL – COMPLETE LOGIC  (Functions & Procedures)
 --  PostgreSQL / Supabase
