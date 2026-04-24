@@ -111,10 +111,109 @@ export function suggestMeals(planId, userId, days = 7) {
 
 /**
  * Get ingredients needed by the plan that are not in the user's pantry.
- * @param {number} planId
- * @param {number} userId
  * Returns: { success, missing: [{ ingredient_name, quantity, ... }] }
  */
 export function getMissingIngredients(planId, userId) {
   return apiRequest(`/meal-plans/${planId}/missing-ingredients?user_id=${userId}`);
+}
+
+// ── Shopping List ─────────────────────────────────────────────────────────────
+
+/**
+ * Save / generate a shopping list for the plan.
+ * items: [{ ingredient_name, quantity, category }]
+ * Returns: { success, list_id }
+ */
+export function saveShoppingList(planId, userId, items) {
+  return apiRequest(`/meal-plans/${planId}/shopping-list`, {
+    method: 'POST',
+    body: { user_id: userId, items },
+  });
+}
+
+/**
+ * Get the shopping list as formatted plain text.
+ * Returns: { success, list_id, text }
+ */
+export function getShoppingListText(planId, userId) {
+  return apiRequest(`/meal-plans/${planId}/shopping-list/text?user_id=${userId}`);
+}
+
+/**
+ * Returns the URL for downloading the shopping list as a PDF.
+ * Use window.open(url) or an <a href> to trigger the download.
+ */
+export function getShoppingListPdfUrl(planId, userId) {
+  return `/api/meal-plans/${planId}/shopping-list/export/pdf?user_id=${userId}`;
+}
+
+/**
+ * Toggle an item in the shopping list as purchased / unpurchased.
+ * Returns: { success, message }
+ */
+export function toggleShoppingItem(listId, userId, ingredientName) {
+  return apiRequest(`/meal-plans/shopping-list/${listId}/toggle`, {
+    method: 'PATCH',
+    body: { user_id: userId, ingredient_name: ingredientName },
+  });
+}
+
+// ── Nutrition ─────────────────────────────────────────────────────────────────
+
+/**
+ * Get weekly nutrition summary for a meal plan.
+ * Returns: { success, nutrition: { calories, protein, carbs, fat } }
+ */
+export function getWeeklyNutrition(planId, userId) {
+  return apiRequest(`/meal-plans/${planId}/nutrition?user_id=${userId}`);
+}
+
+/**
+ * Get nutrition info for a single recipe.
+ * Returns: { success, nutrition: { calories, protein_g, carbs_g, fat_g } }
+ */
+export function getRecipeNutrition(recipeId) {
+  return apiRequest(`/meal-plans/recipes/${recipeId}/nutrition`);
+}
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+
+/**
+ * Save the current plan as a named template.
+ * Returns: { success, template_id }
+ */
+export function savePlanAsTemplate(planId, userId, name) {
+  return apiRequest(`/meal-plans/${planId}/templates`, {
+    method: 'POST',
+    body: { user_id: userId, name },
+  });
+}
+
+/**
+ * Load a saved template into the current plan (replaces existing meals).
+ * Returns: { success, message }
+ */
+export function loadTemplateIntoPlan(planId, userId, templateId) {
+  return apiRequest(`/meal-plans/${planId}/templates/load`, {
+    method: 'POST',
+    body: { user_id: userId, template_id: templateId },
+  });
+}
+
+/**
+ * List all templates saved by the user.
+ * Returns: { success, templates: [{ template_id, name, created_at }] }
+ */
+export function listTemplates(userId) {
+  return apiRequest(`/meal-plans/templates?user_id=${userId}`);
+}
+
+/**
+ * Delete a saved template.
+ * Returns: { success, message }
+ */
+export function deleteTemplate(templateId, userId) {
+  return apiRequest(`/meal-plans/templates/${templateId}?user_id=${userId}`, {
+    method: 'DELETE',
+  });
 }

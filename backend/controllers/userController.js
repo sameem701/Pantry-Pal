@@ -171,6 +171,7 @@ const register = async (req, res) => {
 
         const passwordHash = password;
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log(`[REGISTER] Verification code for ${email}: ${verificationCode}`);
         const result = await registerUserTemp(email, passwordHash, verificationCode);
 
         if (!result.success) {
@@ -304,6 +305,7 @@ const forgotPassword = async (req, res) => {
         }
 
         const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        console.log(`[FORGOT PASSWORD] Reset code for ${email}: ${resetCode}`);
         const result = await requestPasswordReset(email, resetCode);
 
         return res.status(result.success ? 200 : 400).json({

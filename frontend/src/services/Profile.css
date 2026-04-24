@@ -1,0 +1,151 @@
+/* ══ Profile page ═════════════════════════════════════════════════════════════ */
+.profile-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: #888;
+  font-size: 1rem;
+}
+
+.profile-page {
+  padding: 32px 24px;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.profile-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 36px;
+}
+
+.profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #2e7d32;
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+
+.profile-email {
+  text-align: center;
+  font-size: 1.1rem;
+  color: #222;
+  margin: 0 0 4px;
+}
+
+.profile-joined {
+  text-align: center;
+  font-size: 0.82rem;
+  color: #999;
+  margin: 0 0 28px;
+}
+
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pref-section {}
+
+.pref-heading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #222;
+  margin: 0 0 6px;
+}
+
+.pref-hint {
+  font-size: 0.8rem;
+  color: #888;
+  margin: 0 0 12px;
+}
+
+.pref-error {
+  background: #fdecea;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
+  margin-bottom: 16px;
+}
+
+.pref-success {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.86rem;
+  margin-bottom: 16px;
+}
+
+/* Skill level */
+.skill-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.skill-btn {
+  padding: 10px 22px;
+  border: 2px solid #e0e0e0;
+  border-radius: 24px;
+  background: #fafafa;
+  color: #555;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.skill-btn:hover { border-color: #a5d6a7; color: #2e7d32; }
+.skill-btn.active { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+
+/* Tag grid */
+.tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pref-tag {
+  padding: 7px 16px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 20px;
+  background: #fafafa;
+  color: #555;
+  font-size: 0.83rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pref-tag:hover { border-color: #a5d6a7; color: #2e7d32; }
+.pref-tag.selected { background: #e8f5e9; border-color: #2e7d32; color: #2e7d32; font-weight: 700; }
+.pref-tag.cuisine.selected { background: #e3f2fd; border-color: #1976d2; color: #1565c0; }
+
+.save-btn {
+  padding: 13px;
+  background: #2e7d32;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.save-btn:hover:not(:disabled) { background: #1b5e20; }
+.save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
