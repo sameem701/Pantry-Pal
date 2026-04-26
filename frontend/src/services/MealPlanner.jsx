@@ -390,7 +390,7 @@ export default function MealPlanner() {
         list = optionData;
       }
       setSuggestions(list);
-      if (!list.length) addToast('No suggestions — add more pantry items.', 'info');
+      if (!list.length) addToast('No suggestions avaiable at the moment.', 'info');
     } catch (err) {
       addToast(err.message || 'Suggestions failed', 'error');
     } finally {
@@ -717,7 +717,6 @@ export default function MealPlanner() {
               {toISO(startDate) !== todayIso && (
                 <button className="btn-today" onClick={() => setStartDate(today0())}>Today</button>
               )}
-              {planId && <span className="plan-badge">Plan #{planId}</span>}
             </div>
 
             <div className="mp-nav-group">
@@ -812,7 +811,7 @@ export default function MealPlanner() {
                     >
                       <span className="chip-title">{title}</span>
                       {s.match_percent != null && (
-                        <span className="chip-match">{s.match_percent}% match</span>
+                        <span className="chip-match"></span>
                       )}
                       <button
                         className="chip-apply"
