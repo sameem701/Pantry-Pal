@@ -71,7 +71,7 @@ const createMealPlan = async (req, res) => {
 
     try {
         const result = await db.query(
-            'SELECT create_meal_plan($1, $2, $3) AS response',
+            'SELECT get_or_create_meal_plan($1, $2, $3) AS response',
             [user_id, week_start, name]
         );
 

@@ -138,6 +138,30 @@
 
 .rd-section {}
 
+.rd-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid #e8f5e9;
+  padding-bottom: 8px;
+}
+.rd-section-header .rd-section-title { margin: 0; padding: 0; border: none; }
+
+.rd-shop-btn {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  background: #fff8f0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.rd-shop-btn:hover { background: #fff3e0; }
+
 .rd-section-title {
   font-size: 1rem;
   font-weight: 700;
@@ -148,6 +172,29 @@
 }
 
 .rd-none { font-size: 0.88rem; color: #aaa; }
+
+/* Nutrition */
+.rd-nutrition-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.rd-nut-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  padding: 14px 20px;
+  min-width: 88px;
+  flex: 1;
+}
+.rd-nut-cal     { background: #fff3e0; border: 1px solid #ffcc80; }
+.rd-nut-protein { background: #e8f5e9; border: 1px solid #a5d6a7; }
+.rd-nut-carbs   { background: #ede7f6; border: 1px solid #ce93d8; }
+.rd-nut-fat     { background: #fff8e1; border: 1px solid #ffe082; }
+.rd-nut-val { font-size: 1.3rem; font-weight: 700; color: #222; line-height: 1.1; }
+.rd-nut-lbl { font-size: 0.74rem; color: #666; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* Ingredients */
 .rd-ingredients {
@@ -190,7 +237,10 @@
   padding: 2px 8px;
   border-radius: 10px;
   font-weight: 600;
+  white-space: nowrap;
 }
+/* When label shows pantry 'Have:' info */
+.ing-missing-label:not(:empty)[data-have] { background: #fff8e1; color: #f57f17; }
 
 /* Steps */
 .rd-steps {

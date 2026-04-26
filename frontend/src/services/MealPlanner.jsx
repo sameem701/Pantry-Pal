@@ -23,6 +23,28 @@ const RECIPE_VIEW_LABELS = { all: 'All', favourites: 'Saved', protein: 'Protein 
 
 function today0() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+
+const DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+// Groups template meals by day and builds an ordered slot array spanning min→max used day.
+function buildTmplArrangement(meals) {
+  const groups = {};
+  for (const m of (meals || [])) {
+    if (!groups[m.day_of_week]) groups[m.day_of_week] = [];
+    groups[m.day_of_week].push(m);
+  }
+  const usedDays = Object.keys(groups);
+  if (!usedDays.length) return [];
+  const indices = usedDays.map(d => DAY_ORDER.indexOf(d)).filter(i => i >= 0);
+  const minIdx  = Math.min(...indices);
+  const maxIdx  = Math.max(...indices);
+  const slots = [];
+  for (let i = minIdx; i <= maxIdx; i++) {
+    const day = DAY_ORDER[i];
+    slots.push(groups[day] ? { day, meals: groups[day] } : null);
+  }
+  return slots;
+}
 function toISO(d) { return d.toISOString().split('T')[0]; }
 function toShort(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
 function dayName(d) { return d.toLocaleDateString('en-US', { weekday: 'long' }); }
@@ -105,42 +127,65 @@ export default function MealPlanner() {
   const [templateName,     setTemplateName]     = useState('');
   const [savingTemplate,   setSavingTemplate]   = useState(false);
 
+  // ── click-to-assign (double-click to select, click slot to place) ────────
+  const [selectedRecipe, setSelectedRecipe] = useState(null); // { recipeId, title, nutrition }
+
+  // ── load template modal ──────────────────────────────────────────────────
+  const [loadTmplModal,     setLoadTmplModal]     = useState(null); // { template_id, name }
+  const [loadTmplWeekStart, setLoadTmplWeekStart] = useState('');
+  const [loadTmplWorking,   setLoadTmplWorking]   = useState(false);
+  const [loadTmplExisting,  setLoadTmplExisting]  = useState(false);
+
+  // ── view template modal ──────────────────────────────────────────────────
+  const [viewTmplModal, setViewTmplModal] = useState(null); // { name, meals: [...] }
+
+  // ── template load arrangement (drag-and-drop day reorder) ────────────────
+  const [tmplArrangement, setTmplArrangement] = useState([]); // [{ day, meals }|null]
+  const [tmplDragIdx,     setTmplDragIdx]     = useState(null);
+
   // ── load / auto-create plan on date change ─────────────────────────────────
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     setSlotMap({});
     setSuggestions([]);
+    setPlanId(null);
     setLoading(true);
 
     (async () => {
+      const isPastWindow = toISO(addDays(startDate, 6)) < todayIso;
       const saved = localStorage.getItem(planKey(startDate));
-      const id    = saved ? Number(saved) : null;
+      const storedId = saved ? Number(saved) : null;
 
-      if (id) {
-        setPlanId(id);
+      if (isPastWindow) {
+        // Past weeks: only show data if we have a stored planId
+        if (storedId) {
+          try {
+            const data = await getMealPlan(storedId, userId);
+            if (!cancelled) {
+              setPlanId(storedId);
+              setSlotMap(buildSlotMap(data.meals || data.data || []));
+            }
+          } catch {
+            // Stale planId after DB reset — silently clear and show empty
+            localStorage.removeItem(planKey(startDate));
+          }
+        }
+        // No planId for past week → just show empty
+      } else {
+        // Current/future weeks: use get-or-create (handles stale IDs automatically)
         try {
-          const data = await getMealPlan(id, userId);
-          if (!cancelled) setSlotMap(buildSlotMap(data.meals || data.data || []));
+          const created = await createMealPlan(userId, toISO(startDate));
+          const newId = created.plan_id;
+          if (!cancelled) {
+            setPlanId(newId);
+            localStorage.setItem(planKey(startDate), String(newId));
+          }
+          // Load any existing meals for this plan
+          const mealData = await getMealPlan(newId, userId);
+          if (!cancelled) setSlotMap(buildSlotMap(mealData.meals || mealData.data || []));
         } catch (err) {
           if (!cancelled) addToast(err.message || 'Failed to load plan', 'error');
-        }
-      } else {
-        // Only auto-create for current or future windows
-        const isPastWindow = toISO(addDays(startDate, 6)) < todayIso;
-        if (!isPastWindow) {
-          try {
-            const data  = await createMealPlan(userId, toISO(startDate));
-            const newId = data.plan_id;
-            if (!cancelled) {
-              setPlanId(newId);
-              localStorage.setItem(planKey(startDate), String(newId));
-            }
-          } catch (err) {
-            if (!cancelled) addToast(err.message || 'Failed to create plan', 'error');
-          }
-        } else {
-          if (!cancelled) setPlanId(null);
         }
       }
       if (!cancelled) setLoading(false);
@@ -331,12 +376,21 @@ export default function MealPlanner() {
     setSuggestLoading(true);
     setSuggestions([]);
     try {
-      const data = await suggestMeals(planId, userId);
-      const list = Array.isArray(data?.suggestions) ? data.suggestions
-                 : Array.isArray(data?.data)         ? data.data
-                 : Array.isArray(data)               ? data : [];
+      const data = await suggestMeals(planId, userId, 3);
+      // API returns { data: [ { option_number, meals: [...] }, ... ] }
+      const optionData = Array.isArray(data?.data) ? data.data
+                       : Array.isArray(data?.suggestions) ? data.suggestions
+                       : Array.isArray(data) ? data : [];
+      let list;
+      if (optionData.length > 0 && Array.isArray(optionData[0]?.meals)) {
+        // Nested structure — take first option's meals
+        const first = optionData.find(o => o.option_number === 1) || optionData[0];
+        list = Array.isArray(first?.meals) ? first.meals : [];
+      } else {
+        list = optionData;
+      }
       setSuggestions(list);
-      if (!list.length) addToast('No suggestions - add more pantry items.', 'info');
+      if (!list.length) addToast('No suggestions — add more pantry items.', 'info');
     } catch (err) {
       addToast(err.message || 'Suggestions failed', 'error');
     } finally {
@@ -355,8 +409,10 @@ export default function MealPlanner() {
         [day + '-' + type]: { title, recipeId: s.recipe_id, nutrition: {} },
       }));
       setSuggestions(prev => prev.filter(x => x !== s));
+      setIsDirty(true);
     } catch (err) {
       addToast(err.message || 'Failed to apply', 'error');
+      throw err;
     }
   }
 
@@ -367,8 +423,45 @@ export default function MealPlanner() {
     const toApply = suggestions.slice(0, MEAL_TYPES.length).map((s, i) => ({
       ...s, day_of_week: day, meal_type: MEAL_TYPES[i],
     }));
-    for (const s of toApply) await applySuggestion(s);
-    addToast('Suggestions applied to ' + day + '!', 'success');
+    let successCount = 0;
+    for (const s of toApply) {
+      try { await applySuggestion(s); successCount++; }
+      catch { /* error already toasted inside applySuggestion */ }
+    }
+    if (successCount > 0)
+      addToast(successCount + ' suggestion' + (successCount !== 1 ? 's' : '') + ' applied to ' + day + '!', 'success');
+  }
+
+  // ── click-to-assign ────────────────────────────────────────────────────────
+  function handleRecipeSelect(recipe) {
+    setSelectedRecipe({
+      recipeId:  recipe.recipe_id,
+      title:     recipe.title || recipe.recipe_title || ('Recipe #' + recipe.recipe_id),
+      nutrition: {
+        calories: recipe.nutrition?.calories  || recipe.calories  || 0,
+        protein:  recipe.nutrition?.protein_g || recipe.protein_g || 0,
+        carbs:    recipe.nutrition?.carbs_g   || recipe.carbs_g   || 0,
+        fat:      recipe.nutrition?.fat_g     || recipe.fat_g     || 0,
+      },
+    });
+  }
+
+  async function handleSlotClick(day, type, e) {
+    e && e.stopPropagation();
+    if (!selectedRecipe) return;
+    if (!planId) { addToast('No plan for this week.', 'info'); return; }
+    try {
+      await upsertMeal(planId, userId, selectedRecipe.recipeId, day, type);
+      setSlotMap(prev => ({
+        ...prev,
+        [day + '-' + type]: { title: selectedRecipe.title, recipeId: selectedRecipe.recipeId, nutrition: selectedRecipe.nutrition || {} },
+      }));
+      addToast('Added to ' + (MEAL_LABELS[type] || type), 'success');
+      setIsDirty(true);
+      setSelectedRecipe(null);
+    } catch (err) {
+      addToast(err.message || 'Failed to add meal', 'error');
+    }
   }
 
   // ── shopping modal ─────────────────────────────────────────────────────────
@@ -384,10 +477,11 @@ export default function MealPlanner() {
                   : Array.isArray(data)          ? data : [];
       setShopItems(items.map(i => ({
         ingredient_name: i.ingredient_name || i.name || '',
-        quantity:        i.quantity || '',
-        unit:            i.unit    || '',
-        ingredient_id:   i.ingredient_id || null,
-        is_checked: true,
+        // raw_breakdown shows total needed (e.g. "2 cups + 340 g"); pantry_display shows what user has
+        quantity:       i.raw_breakdown || i.quantity || '',
+        pantry_display: i.pantry_display || '',
+        ingredient_id:  i.ingredient_id || null,
+        is_checked: false,   // starts unchecked — user selects items they need to buy
         adding:     false,
       })));
     } catch (err) {
@@ -399,6 +493,10 @@ export default function MealPlanner() {
 
   function toggleShopItem(idx) {
     setShopItems(prev => prev.map((it, i) => i === idx ? { ...it, is_checked: !it.is_checked } : it));
+  }
+
+  function markAllShopItems() {
+    setShopItems(prev => prev.map(it => ({ ...it, is_checked: true })));
   }
 
   async function addShopItemToPantry(idx) {
@@ -500,24 +598,73 @@ export default function MealPlanner() {
     } finally { setSavingTemplate(false); }
   }
 
-  async function handleLoadTemplate(templateId) {
-    setConfirmAction({
-      title: 'Load Template',
-      message: 'This will replace all current meals. Continue?',
-      confirmLabel: 'Load',
-      onConfirm: async () => {
-        setConfirmAction(null);
-        try {
-          await loadTemplateIntoPlan(planId, userId, templateId);
-          const data = await getMealPlan(planId, userId);
-          setSlotMap(buildSlotMap(data.meals || data.data || []));
-          setActiveTab('calendar');
-          addToast('Template loaded!', 'success');
-        } catch (err) {
-          addToast(err.message || 'Failed to load template', 'error');
+  async function handleLoadTemplate(templateId, name) {
+    const tmpl = templates.find(t => t.template_id === templateId);
+    const meals = tmpl?.meals || [];
+    setTmplArrangement(buildTmplArrangement(meals));
+    const defaultStart = toISO(today0());
+    setLoadTmplWeekStart(defaultStart);
+    // Show overwrite warning only if the target week genuinely has meals
+    const isCurrentWeek = defaultStart === toISO(startDate);
+    setLoadTmplExisting(isCurrentWeek ? Object.keys(slotMap).length > 0 : !!localStorage.getItem(planKey(today0())));
+    setLoadTmplModal({ template_id: templateId, name });
+  }
+
+  function handleLoadTmplDateChange(iso) {
+    setLoadTmplWeekStart(iso);
+    if (!iso) return;
+    const d = new Date(iso + 'T00:00:00');
+    const isCurrentWeek = iso === toISO(startDate);
+    setLoadTmplExisting(isCurrentWeek ? Object.keys(slotMap).length > 0 : !!localStorage.getItem(planKey(d)));
+  }
+
+  async function confirmLoadTemplate() {
+    if (!loadTmplModal || !loadTmplWeekStart) return;
+    setLoadTmplWorking(true);
+    try {
+      const weekStartDate = new Date(loadTmplWeekStart + 'T00:00:00');
+      // Use toISO() so the date key matches what the useEffect will look for
+      const isoWeekStart = toISO(weekStartDate);
+      const storedKey    = planKey(weekStartDate);
+
+      // Always use get-or-create so stale localStorage entries don't block loading
+      const created      = await createMealPlan(userId, isoWeekStart);
+      const targetPlanId = created.plan_id;
+      localStorage.setItem(storedKey, String(targetPlanId));
+
+      // Clear existing meals before applying the arrangement
+      await clearMealPlan(targetPlanId, userId);
+
+      // Apply each slot: position i → startDate + i, compute actual day-of-week from date
+      for (let i = 0; i < tmplArrangement.length; i++) {
+        const slot = tmplArrangement[i];
+        if (!slot) continue;
+        const slotDate  = addDays(weekStartDate, i);
+        const dayOfWeek = slotDate.toLocaleDateString('en-US', { weekday: 'long' });
+        for (const meal of slot.meals) {
+          await upsertMeal(targetPlanId, userId, meal.recipe_id, dayOfWeek, meal.meal_type);
         }
-      },
-    });
+      }
+
+      // Always fetch fresh data and update UI directly — avoids useEffect race
+      const refreshed = await getMealPlan(targetPlanId, userId);
+      setPlanId(targetPlanId);
+      setSlotMap(buildSlotMap(refreshed.meals || refreshed.data || []));
+
+      const name = loadTmplModal.name;
+      setLoadTmplModal(null);
+      setTmplArrangement([]);
+      setActiveTab('calendar');
+      // Only navigate if the target week differs — keeps useEffect from overwriting slotMap
+      if (isoWeekStart !== toISO(startDate)) {
+        setStartDate(weekStartDate);
+      }
+      addToast('Template "' + name + '" applied to week of ' + toShort(weekStartDate) + '!', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to load template', 'error');
+    } finally {
+      setLoadTmplWorking(false);
+    }
   }
 
   function confirmDeleteTemplate(templateId, name) {
@@ -551,7 +698,7 @@ export default function MealPlanner() {
   const hasNut  = nut.active.length > 0 && nut.wTotal.calories > 0;
 
   return (
-    <div className={'mp-shell' + (applyAllMode ? ' apply-all-mode' : '')}>
+    <div className={'mp-shell' + (applyAllMode ? ' apply-all-mode' : '') + (selectedRecipe ? ' click-assign-mode' : '')}>
 
       {/* Header */}
       <div className="mp-page-header">
@@ -561,7 +708,7 @@ export default function MealPlanner() {
           <div className="mp-date-nav">
             {/* Two-level navigation: outer = 7 days, inner = 1 day */}
             <div className="mp-nav-group">
-              <button className="mp-nav-outer" onClick={() => nav(-7)} title="Back 7 days">&laquo;</button>
+              <button className="mp-nav-outer" onClick={() => nav(-7)} title="Previous week">&laquo;</button>
               <button className="mp-nav-inner" onClick={() => nav(-1)} title="Back 1 day">&lsaquo;</button>
             </div>
 
@@ -575,24 +722,38 @@ export default function MealPlanner() {
 
             <div className="mp-nav-group">
               <button className="mp-nav-inner" onClick={() => nav(1)}  title="Forward 1 day">&rsaquo;</button>
-              <button className="mp-nav-outer" onClick={() => nav(7)}  title="Forward 7 days">&raquo;</button>
+              <button className="mp-nav-outer" onClick={() => nav(7)}  title="Next week">&raquo;</button>
             </div>
           </div>
         </div>
 
         {planId && (
-          <div className="mp-toolbar">
-            <button className="btn-suggest" onClick={handleSuggest} disabled={suggestLoading}>
-              {suggestLoading ? 'Loading...' : 'Suggest Meals'}
-            </button>
-            <button className="btn-primary-sm" onClick={openShopModal}>
-              Shopping List
-            </button>
-            {isDirty && (
-              <button className="btn-save-plan" onClick={handleSavePlan}>Save Plan</button>
-            )}
-            <button className="btn-danger-sm" onClick={confirmClear}>Clear Week</button>
-          </div>
+          <>
+            <div className="mp-toolbar">
+              <button className="btn-suggest" onClick={handleSuggest} disabled={suggestLoading}>
+                {suggestLoading ? 'Loading...' : 'Suggest Meals'}
+              </button>
+              <button className="btn-primary-sm" onClick={openShopModal}>
+                Shopping List
+              </button>
+              {isDirty && (
+                <button className="btn-save-plan" onClick={handleSavePlan}>Save Plan</button>
+              )}
+              <button className="btn-danger-sm" onClick={confirmClear}>Clear Week</button>
+            </div>
+            {activeTab === 'calendar' && <div className="mp-save-tmpl-row">
+              <input
+                className="mp-save-tmpl-input"
+                placeholder="Save this week as a template..."
+                value={templateName}
+                onChange={e => setTemplateName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
+              />
+              <button className="btn-ghost-sm" onClick={handleSaveTemplate} disabled={savingTemplate}>
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>}
+          </>
         )}
 
         {!planId && !loading && toISO(addDays(startDate, 6)) < todayIso && (
@@ -605,6 +766,16 @@ export default function MealPlanner() {
         <div className="apply-all-banner">
           Click on a day column in the calendar to apply all suggestions to that day.
           <button className="apply-all-cancel" onClick={() => setApplyAllMode(false)}>Cancel</button>
+        </div>
+      )}
+
+      {/* Selected-recipe banner */}
+      {selectedRecipe && !applyAllMode && (
+        <div className="selected-recipe-banner">
+          <span className="selected-recipe-label">
+            &ldquo;{selectedRecipe.title}&rdquo; selected &mdash; click any meal slot to place it
+          </span>
+          <button className="apply-all-cancel" onClick={() => setSelectedRecipe(null)}>Cancel</button>
         </div>
       )}
 
@@ -633,13 +804,21 @@ export default function MealPlanner() {
               <div className="suggestions-chips">
                 {suggestions.map((s, i) => {
                   const title = s.recipe_title || s.title || ('Recipe #' + s.recipe_id);
-                  const day   = s.day_of_week ? s.day_of_week.slice(0, 3) : '---';
                   return (
-                    <div key={i} className="suggestion-chip">
-                      <span className={'meal-badge meal-badge--' + s.meal_type}>{s.meal_type}</span>
-                      <span className="chip-day">{day}</span>
+                    <div
+                      key={i}
+                      className={'suggestion-chip' + (selectedRecipe?.recipeId === s.recipe_id ? ' selected' : '')}
+                      onDoubleClick={() => handleRecipeSelect(s)}
+                    >
                       <span className="chip-title">{title}</span>
-                      <button className="chip-apply" onClick={() => applySuggestion(s)}>+</button>
+                      {s.match_percent != null && (
+                        <span className="chip-match">{s.match_percent}% match</span>
+                      )}
+                      <button
+                        className="chip-apply"
+                        title="Select to place in calendar"
+                        onClick={() => handleRecipeSelect(s)}
+                      >+</button>
                     </div>
                   );
                 })}
@@ -696,10 +875,13 @@ export default function MealPlanner() {
                             slot   ? 'has-meal' : 'empty',
                             isPast ? 'past-slot' : '',
                             isOver && !isPast ? 'drag-over' : '',
+                            selectedRecipe && !isPast ? 'click-target' : '',
                           ].filter(Boolean).join(' ')}
                           onDragOver={e => { if (!isPast) { e.preventDefault(); setDragOver(key); } }}
                           onDragLeave={() => setDragOver(null)}
                           onDrop={e => { if (!isPast) handleDrop(e, day, type); }}
+                          onClick={e => { if (selectedRecipe && !isPast) handleSlotClick(day, type, e); }}
+                          style={selectedRecipe && !isPast ? { cursor: 'crosshair' } : undefined}
                         >
                           {slot ? (
                             <div
@@ -713,7 +895,7 @@ export default function MealPlanner() {
                               )}
                             </div>
                           ) : !isPast ? (
-                            <span className="slot-drop-hint">Drop here</span>
+                            <span className="slot-drop-hint">{selectedRecipe ? 'Click to place' : 'Drop here'}</span>
                           ) : null}
                         </td>
                       );
@@ -725,7 +907,7 @@ export default function MealPlanner() {
           </div>
 
           <p className="mp-drag-hint">
-            Drag recipes from the list below into the calendar. Drag between slots to swap meals.
+            Drag recipes into the calendar, or <strong>double-click</strong> a recipe to select it then click a slot to place it.
           </p>
 
           {/* Recipe list */}
@@ -761,12 +943,15 @@ export default function MealPlanner() {
                 const p   = recipe.nutrition?.protein_g || recipe.protein_g;
                 const c   = recipe.nutrition?.carbs_g   || recipe.carbs_g;
                 const cal = recipe.nutrition?.calories  || recipe.calories;
+                const isSelected = selectedRecipe?.recipeId === recipe.recipe_id;
                 return (
                   <div
                     key={recipe.recipe_id}
-                    className="mp-recipe-card"
+                    className={'mp-recipe-card' + (isSelected ? ' recipe-selected' : '')}
                     draggable
                     onDragStart={e => handleDragStart(e, recipe, null)}
+                    onDoubleClick={() => handleRecipeSelect(recipe)}
+                    title="Double-click to select, then click a calendar slot to place"
                   >
                     <span className="mp-drag-handle">&#x2630;</span>
                     <div className="mp-recipe-card-info">
@@ -802,9 +987,11 @@ export default function MealPlanner() {
         const nutWeekDays = Array.from({ length: 7 }, (_, i) => addDays(nutStart, i));
         const nutTodayIso = toISO(today0());
 
-        // build a slotMap that works across any week: when nutViewDate === startDate week, use live slotMap
-        // otherwise build from planKey localStorage (best effort)
-        const isSameWeek = toISO(nutStart) === toISO(startDate);
+        // Detect if the nutrition week overlaps with the currently loaded calendar week.
+        // We compare by day-name overlap rather than exact start-date match, because
+        // startDate can be any day of the week (not necessarily Sunday).
+        const weekDayIsoSet = new Set(weekDays.map(toISO));
+        const isSameWeek = nutWeekDays.some(d => weekDayIsoSet.has(toISO(d)));
         const nutSlotMap = isSameWeek ? slotMap : {};
 
         const nutDays = nutWeekDays.map(date => {
@@ -866,9 +1053,7 @@ export default function MealPlanner() {
             {/* Navigation row */}
             <div className="nut-nav-row">
               <button className="mp-nav-outer" onClick={() => nutNav(-7)} title="Previous week">&laquo;</button>
-              <button className="mp-nav-inner" onClick={() => nutNav(-1)} title="Previous day">&lsaquo;</button>
               <span className="nut-week-label">{fmtRange(nutStart)}</span>
-              <button className="mp-nav-inner" onClick={() => nutNav(1)}  title="Next day">&rsaquo;</button>
               <button className="mp-nav-outer" onClick={() => nutNav(7)}  title="Next week">&raquo;</button>
               {toISO(nutStart) !== toISO(startDate) && (
                 <button className="btn-today" onClick={() => setNutViewDate(today0())}>Current Week</button>
@@ -882,75 +1067,38 @@ export default function MealPlanner() {
               </div>
             )}
 
-            {/* Per-day breakdown */}
-            <div className="nut-days">
-              {nutDays.map(d => (
-                <div
-                  key={d.iso}
-                  className={[
-                    'nut-day-row',
-                    !d.hasMeals ? 'nut-day-empty' : '',
-                    d.isToday   ? 'nut-day-today'  : '',
-                    d.isPast && !d.hasMeals ? 'nut-day-missed' : '',
-                  ].filter(Boolean).join(' ')}
-                >
-                  <div className="nut-day-head">
-                    <span className="nut-day-name">{d.day.slice(0, 3)} {toShort(d.date)}</span>
-                    {d.hasMeals ? (
-                      <span className="nut-day-cal">
-                        {d.total.calories > 0 ? Math.round(d.total.calories) + ' kcal' : 'No calorie data'}
-                      </span>
-                    ) : (
-                      <span className="nut-day-status">{d.isPast ? 'Missed' : 'No meals yet'}</span>
-                    )}
-                  </div>
-                  {d.hasMeals && d.total.calories > 0 && (
-                    <div className="nut-day-macros">
-                      <span>Protein: {Math.round(d.total.protein)}g</span>
-                      <span>Carbs: {Math.round(d.total.carbs)}g</span>
-                      <span>Fat: {Math.round(d.total.fat)}g</span>
-                    </div>
-                  )}
-                  {d.hasMeals && (
-                    <div className="nut-day-meals">
-                      {d.meals.map((m, i) => (
-                        <span key={i} className={'nut-meal-tag nut-meal-tag--' + m.type}>{m.title}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Weekly summary */}
+            {/* ── Weekly summary block (pie + totals) — always at top ─────── */}
             {hasNutData ? (
-              <div className="nutrition-cards">
-                <p className="nut-summary-note">
-                  Totals from {nutActive.length} day{nutActive.length !== 1 ? 's' : ''} with meals
-                  {nutMissed.length > 0 ? ', ' + nutMissed.length + ' missed' : ''}
-                </p>
-                <div className="nutrition-card nutrition-card--calories">
-                  <span className="nutrition-card-value">{Math.round(nutWTotal.calories)}</span>
-                  <span className="nutrition-card-label">kcal total</span>
-                </div>
-                <div className="nutrition-card nutrition-card--protein">
-                  <span className="nutrition-card-value">{Math.round(nutWTotal.protein)}g</span>
-                  <span className="nutrition-card-label">Protein</span>
-                </div>
-                <div className="nutrition-card nutrition-card--carbs">
-                  <span className="nutrition-card-value">{Math.round(nutWTotal.carbs)}g</span>
-                  <span className="nutrition-card-label">Carbs</span>
-                </div>
-                <div className="nutrition-card nutrition-card--fat">
-                  <span className="nutrition-card-value">{Math.round(nutWTotal.fat)}g</span>
-                  <span className="nutrition-card-label">Fat</span>
-                </div>
-
-                {/* Running pie chart */}
-                <div className="nut-pie-card">
-                  <h3 className="nutrition-bars-title">Macronutrient Split (by calories)</h3>
-                  <div className="nut-pie-wrap">
-                    <div className="nut-pie" style={{ background: conicGradient }} />
+              <div className="nut-weekly-block">
+                {/* Pie + macro legend side-by-side */}
+                <div className="nut-summary-row">
+                  <div className="nut-pie-big-wrap">
+                    <div className="nut-pie-big" style={{ background: conicGradient }} />
+                  </div>
+                  <div className="nut-summary-right">
+                    <p className="nut-summary-title">Weekly Nutrition</p>
+                    <p className="nut-summary-note">
+                      {nutActive.length} day{nutActive.length !== 1 ? 's' : ''} with meals
+                      {nutMissed.length > 0 ? ', ' + nutMissed.length + ' missed' : ''}
+                    </p>
+                    <div className="nut-macro-list">
+                      <div className="nut-macro-item nut-macro-item--cal">
+                        <span className="nut-macro-val">{Math.round(nutWTotal.calories)}</span>
+                        <span className="nut-macro-lbl">kcal</span>
+                      </div>
+                      <div className="nut-macro-item nut-macro-item--protein">
+                        <span className="nut-macro-val" style={{ color: '#4caf8c' }}>{Math.round(nutWTotal.protein)}g</span>
+                        <span className="nut-macro-lbl">Protein</span>
+                      </div>
+                      <div className="nut-macro-item nut-macro-item--carbs">
+                        <span className="nut-macro-val" style={{ color: '#5a4fcf' }}>{Math.round(nutWTotal.carbs)}g</span>
+                        <span className="nut-macro-lbl">Carbs</span>
+                      </div>
+                      <div className="nut-macro-item nut-macro-item--fat">
+                        <span className="nut-macro-val" style={{ color: '#e8a050' }}>{Math.round(nutWTotal.fat)}g</span>
+                        <span className="nut-macro-lbl">Fat</span>
+                      </div>
+                    </div>
                     <div className="nut-pie-legend">
                       {pieSlices.filter(s => s.pct > 0).map(s => (
                         <div key={s.label} className="nut-pie-item">
@@ -960,28 +1108,99 @@ export default function MealPlanner() {
                         </div>
                       ))}
                     </div>
+                    {nutAvg && (
+                      <div style={{ marginTop: 12 }}>
+                        <MacroBar label="Avg Cal"    value={nutAvg.calories} max={2200} color="#e8622a" />
+                        <MacroBar label="Avg Protein" value={nutAvg.protein}  max={150}  color="#4caf8c" />
+                        <MacroBar label="Avg Carbs"   value={nutAvg.carbs}    max={275}  color="#5a4fcf" />
+                        <MacroBar label="Avg Fat"     value={nutAvg.fat}      max={75}   color="#e8a050" />
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {nutAvg && (
-                  <div className="nutrition-bars-card">
-                    <h3 className="nutrition-bars-title">Daily Average ({nutActive.length} active day{nutActive.length !== 1 ? 's' : ''})</h3>
-                    <MacroBar label="Calories"    value={nutAvg.calories} max={2200} color="#e8622a" />
-                    <MacroBar label="Protein (g)" value={nutAvg.protein}  max={150}  color="#4caf8c" />
-                    <MacroBar label="Carbs (g)"   value={nutAvg.carbs}    max={275}  color="#5a4fcf" />
-                    <MacroBar label="Fat (g)"     value={nutAvg.fat}      max={75}   color="#e8a050" />
-                  </div>
-                )}
+                {/* Per-day breakdown */}
+                <h3 className="nut-day-section-title">Daily Breakdown</h3>
+                <div className="nut-days">
+                  {nutDays.map(d => (
+                    <div
+                      key={d.iso}
+                      className={[
+                        'nut-day-row',
+                        !d.hasMeals ? 'nut-day-empty' : '',
+                        d.isToday   ? 'nut-day-today'  : '',
+                        d.isPast && !d.hasMeals ? 'nut-day-missed' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <div className="nut-day-head">
+                        <span className="nut-day-name">{d.day.slice(0, 3)} {toShort(d.date)}</span>
+                        {d.hasMeals ? (
+                          <span className="nut-day-cal">
+                            {d.total.calories > 0 ? Math.round(d.total.calories) + ' kcal' : 'No calorie data'}
+                          </span>
+                        ) : (
+                          <span className="nut-day-status">{d.isPast ? 'Missed' : 'No meals yet'}</span>
+                        )}
+                      </div>
+                      {d.hasMeals && d.total.calories > 0 && (
+                        <div className="nut-day-macros">
+                          <span>Protein: {Math.round(d.total.protein)}g</span>
+                          <span>Carbs: {Math.round(d.total.carbs)}g</span>
+                          <span>Fat: {Math.round(d.total.fat)}g</span>
+                        </div>
+                      )}
+                      {d.hasMeals && (
+                        <div className="nut-day-meals">
+                          {d.meals.map((m, i) => (
+                            <span key={i} className={'nut-meal-tag nut-meal-tag--' + m.type}>{m.title}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="empty-state">
-                <p className="empty-state-title">No nutrition data for this week</p>
-                <p className="empty-state-body">
-                  {isSameWeek
-                    ? 'Add recipes to your plan. Make sure recipes have nutrition values filled in.'
-                    : 'This week has no saved meal plan data to compute nutrition from.'}
-                </p>
-              </div>
+              <>
+                {/* Per-day rows even when no nutrition data */}
+                <div className="nut-days">
+                  {nutDays.map(d => (
+                    <div
+                      key={d.iso}
+                      className={[
+                        'nut-day-row',
+                        !d.hasMeals ? 'nut-day-empty' : '',
+                        d.isToday   ? 'nut-day-today'  : '',
+                        d.isPast && !d.hasMeals ? 'nut-day-missed' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <div className="nut-day-head">
+                        <span className="nut-day-name">{d.day.slice(0, 3)} {toShort(d.date)}</span>
+                        {d.hasMeals ? (
+                          <span className="nut-day-cal">No calorie data</span>
+                        ) : (
+                          <span className="nut-day-status">{d.isPast ? 'Missed' : 'No meals yet'}</span>
+                        )}
+                      </div>
+                      {d.hasMeals && (
+                        <div className="nut-day-meals">
+                          {d.meals.map((m, i) => (
+                            <span key={i} className={'nut-meal-tag nut-meal-tag--' + m.type}>{m.title}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="empty-state">
+                  <p className="empty-state-title">No nutrition data for this week</p>
+                  <p className="empty-state-body">
+                    {isSameWeek
+                      ? 'Add recipes to your plan. Make sure recipes have nutrition values filled in.'
+                      : 'This week has no saved meal plan data to compute nutrition from.'}
+                  </p>
+                </div>
+              </>
             )}
           </div>
         );
@@ -990,23 +1209,7 @@ export default function MealPlanner() {
       {/* ── TEMPLATES TAB ────────────────────────────────────────────────────── */}
       {activeTab === 'templates' && (
         <div className="mp-tab-content">
-          {planId && (
-            <div className="templates-save-card">
-              <h2 className="tab-section-title">Save Current Plan as Template</h2>
-              <div className="templates-save-row">
-                <input
-                  className="form-input"
-                  placeholder="Template name..."
-                  value={templateName}
-                  onChange={e => setTemplateName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
-                />
-                <button className="btn-primary-sm" onClick={handleSaveTemplate} disabled={savingTemplate}>
-                  {savingTemplate ? 'Saving...' : 'Save Template'}
-                </button>
-              </div>
-            </div>
-          )}
+          
           <div className="templates-list-section">
             <h3 className="templates-list-title">Saved Templates</h3>
             {templatesLoading && <p className="tab-section-sub">Loading...</p>}
@@ -1021,13 +1224,170 @@ export default function MealPlanner() {
                 <div className="template-row-info">
                   <span className="template-name">{t.name}</span>
                   {t.created_at && <span className="template-date">{new Date(t.created_at).toLocaleDateString()}</span>}
+                  {Array.isArray(t.meals) && t.meals.length > 0 && (
+                    <span className="template-meal-count">{t.meals.length} meal{t.meals.length !== 1 ? 's' : ''}</span>
+                  )}
                 </div>
                 <div className="template-row-actions">
-                  {planId && <button className="btn-primary-sm" onClick={() => handleLoadTemplate(t.template_id)}>Load</button>}
+                  <button className="btn-ghost-sm" onClick={() => setViewTmplModal({ name: t.name, meals: t.meals || [] })}>View</button>
+                  {planId && <button className="btn-primary-sm" onClick={() => handleLoadTemplate(t.template_id, t.name)}>Load</button>}
                   <button className="btn-danger-sm" onClick={() => confirmDeleteTemplate(t.template_id, t.name)}>Delete</button>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── LOAD TEMPLATE MODAL ─────────────────────────────────────────────── */}
+      {loadTmplModal && (
+        <div className="modal-overlay" onClick={() => !loadTmplWorking && setLoadTmplModal(null)}>
+          <div className="shop-modal tmpl-load-modal" onClick={e => e.stopPropagation()}>
+            <div className="shop-modal-head">
+              <h2 className="shop-modal-title">Load: {loadTmplModal.name}</h2>
+              <button className="mp-modal-close" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}>×</button>
+            </div>
+
+            {/* Date picker row */}
+            <div className="tmpl-load-date-row">
+              <label className="shop-modal-sub" style={{ display: 'block', marginBottom: 6 }}>Week start date</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="date"
+                  className="form-input"
+                  min={toISO(today0())}
+                  value={loadTmplWeekStart}
+                  onChange={e => handleLoadTmplDateChange(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                {loadTmplWeekStart !== toISO(today0()) && (
+                  <button className="btn-today" onClick={() => handleLoadTmplDateChange(toISO(today0()))}>Today</button>
+                )}
+              </div>
+              {loadTmplWeekStart && (
+                <p className="shop-modal-sub" style={{ marginTop: 6 }}>
+                  Starts: <strong>
+                    {toShort(new Date(loadTmplWeekStart + 'T00:00:00'))} &ndash; {
+                      toShort(addDays(new Date(loadTmplWeekStart + 'T00:00:00'), tmplArrangement.length - 1))
+                    }, {new Date(loadTmplWeekStart + 'T00:00:00').getFullYear()}
+                  </strong>
+                </p>
+              )}
+              {loadTmplExisting && (
+                <div className="nut-missed-banner" style={{ marginTop: 8 }}>
+                  A meal plan already exists for this week — it will be overwritten.
+                </div>
+              )}
+            </div>
+
+            {/* Day arrangement */}
+            {tmplArrangement.length > 0 && (
+              <>
+                <p className="tmpl-arrange-hint">
+                  Drag days to reorder. The date for each slot updates automatically.
+                </p>
+                <div className="tmpl-arrange-list">
+                  {tmplArrangement.map((slot, idx) => {
+                    const slotDate = loadTmplWeekStart
+                      ? addDays(new Date(loadTmplWeekStart + 'T00:00:00'), idx)
+                      : null;
+                    return (
+                      <div
+                        key={idx}
+                        className={`tmpl-slot${tmplDragIdx === idx ? ' tmpl-slot--dragging' : ''}`}
+                        draggable
+                        onDragStart={() => setTmplDragIdx(idx)}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={() => {
+                          if (tmplDragIdx === null || tmplDragIdx === idx) { setTmplDragIdx(null); return; }
+                          const arr = [...tmplArrangement];
+                          [arr[tmplDragIdx], arr[idx]] = [arr[idx], arr[tmplDragIdx]];
+                          setTmplArrangement(arr);
+                          setTmplDragIdx(null);
+                        }}
+                        onDragEnd={() => setTmplDragIdx(null)}
+                      >
+                        <div className="tmpl-slot-handle">⠿</div>
+                        <div className="tmpl-slot-date-col">
+                          {slotDate && (
+                            <>
+                              <span className="tmpl-slot-dow">{slotDate.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                              <span className="tmpl-slot-mday">{toShort(slotDate)}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="tmpl-slot-body">
+                          {slot ? (
+                            slot.meals.map((m, mi) => (
+                              <div key={mi} className="tmpl-slot-meal">
+                                <span className={`nut-meal-tag nut-meal-tag--${m.meal_type}`}>
+                                  {MEAL_LABELS[m.meal_type] || m.meal_type}
+                                </span>
+                                <span className="tmpl-slot-recipe">{m.recipe_title || ('Recipe #' + m.recipe_id)}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="tmpl-slot-empty">No meals assigned</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            {tmplArrangement.length === 0 && (
+              <p className="shop-modal-sub" style={{ padding: '8px 0 12px' }}>This template has no meals.</p>
+            )}
+
+            <div className="shop-modal-footer">
+              <button className="btn-ghost-sm" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}>Cancel</button>
+              <button
+                className="btn-primary-sm"
+                onClick={confirmLoadTemplate}
+                disabled={loadTmplWorking || !loadTmplWeekStart || tmplArrangement.length === 0}
+              >
+                {loadTmplWorking ? 'Applying...' : 'Apply to Week'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── VIEW TEMPLATE MODAL ─────────────────────────────────────────────── */}
+      {viewTmplModal && (
+        <div className="modal-overlay" onClick={() => setViewTmplModal(null)}>
+          <div className="shop-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="shop-modal-head">
+              <h2 className="shop-modal-title">{viewTmplModal.name}</h2>
+              <button className="mp-modal-close" onClick={() => setViewTmplModal(null)}>x</button>
+            </div>
+            {viewTmplModal.meals.length === 0 ? (
+              <p className="shop-modal-sub" style={{ padding: '16px 0' }}>This template has no meals.</p>
+            ) : (
+              <div className="view-tmpl-body">
+                {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(day => {
+                  const dayMeals = viewTmplModal.meals.filter(m => m.day_of_week === day);
+                  if (!dayMeals.length) return null;
+                  return (
+                    <div key={day} className="view-tmpl-day">
+                      <div className="view-tmpl-day-name">{day}</div>
+                      {dayMeals.map((m, i) => (
+                        <div key={i} className="view-tmpl-meal">
+                          <span className={'nut-meal-tag nut-meal-tag--' + m.meal_type}>
+                            {MEAL_LABELS[m.meal_type] || m.meal_type}
+                          </span>
+                          <span className="view-tmpl-recipe">{m.recipe_title || ('Recipe #' + m.recipe_id)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="shop-modal-footer">
+              <button className="btn-primary-sm" onClick={() => setViewTmplModal(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
@@ -1041,7 +1401,7 @@ export default function MealPlanner() {
               <button className="mp-modal-close" onClick={() => setShopModal(false)}>x</button>
             </div>
             <p className="shop-modal-sub">
-              Select ingredients to add to your shopping list. Deselect items you already have.
+              Select the ingredients you need to buy. Check all with the button below, or pick individually.
             </p>
 
             {shopLoading && <p className="shop-modal-loading">Loading missing ingredients...</p>}
@@ -1058,7 +1418,8 @@ export default function MealPlanner() {
                         {item.is_checked && '\u2713'}
                       </div>
                       <span className="shop-item-name">{item.ingredient_name}</span>
-                      {item.quantity && <span className="shop-item-qty">{item.quantity} {item.unit}</span>}
+                      {item.quantity && <span className="shop-item-qty">Need: {item.quantity}</span>}
+                      {item.pantry_display && item.pantry_display !== '0' && <span className="shop-item-have">Have: {item.pantry_display}</span>}
                     </label>
                     <button
                       className="btn-add-pantry"
@@ -1074,6 +1435,7 @@ export default function MealPlanner() {
 
             {shopItems.length > 0 && (
               <div className="shop-modal-footer">
+                <button className="btn-ghost-sm" onClick={markAllShopItems}>Select All</button>
                 <span className="shop-selected-count">
                   {shopItems.filter(i => i.is_checked).length} item{shopItems.filter(i => i.is_checked).length !== 1 ? 's' : ''} selected
                 </span>

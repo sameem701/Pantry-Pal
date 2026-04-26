@@ -21,6 +21,7 @@
 -- ============================================================
 DROP TABLE IF EXISTS shopping_list_items     CASCADE;
 DROP TABLE IF EXISTS shopping_lists          CASCADE;
+DROP TABLE IF EXISTS unit_conversions        CASCADE;
 DROP TABLE IF EXISTS saved_plan_templates    CASCADE;
 DROP TABLE IF EXISTS meal_plan_recipes       CASCADE;
 DROP TABLE IF EXISTS meal_plans              CASCADE;
@@ -313,6 +314,37 @@ CREATE TABLE shopping_list_items (
     is_checked      BOOLEAN      DEFAULT FALSE,
     PRIMARY KEY (list_id, ingredient_name)
 );
+
+
+-- ============================================================
+--  UNIT CONVERSIONS
+--  Converts any kitchen unit → a canonical base unit per type.
+--  base_unit is always the target: 'ml' (volume), 'g' (weight), 'piece' (count)
+--  factor = how many base_units are in 1 of from_unit
+--  e.g. 1 cup = 240 ml  →  from_unit='cup', base_unit='ml', factor=240
+-- ============================================================
+
+CREATE TABLE unit_conversions (
+    from_unit   VARCHAR(30)    NOT NULL,   -- as stored in recipe_ingredients.unit
+    base_unit   VARCHAR(10)    NOT NULL,   -- 'ml' | 'g' | 'piece'
+    factor      DECIMAL(12, 6) NOT NULL,   -- 1 from_unit = factor base_units
+    PRIMARY KEY (from_unit)
+);
+
+INSERT INTO unit_conversions (from_unit, base_unit, factor) VALUES
+-- ── Volume → ml  (unit_ids 3,4,5,6,7) ──────────────────────
+('ml',           'ml',      1),
+('liters',       'ml',   1000),
+('cups',         'ml',    240),
+('tablespoons',  'ml',     14.7868),
+('teaspoons',    'ml',      4.92892),
+-- ── Weight → g   (unit_ids 1,2,10) ─────────────────────────
+('grams',        'g',       1),
+('kg',           'g',    1000),
+('ounces',       'g',      28.3495),
+-- ── Count → piece (unit_ids 8,9) ────────────────────────────
+('count',        'piece',   1),
+('pinch',        'piece',   1);
 
 
 -- ============================================================

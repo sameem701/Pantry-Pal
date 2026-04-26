@@ -97,8 +97,27 @@
   display: flex;
   gap: 10px;
   align-items: center;
+  padding: 0 0 8px;
+}
+
+/* Save-as-template inline row (calendar tab) */
+.mp-save-tmpl-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   padding: 0 0 16px;
 }
+.mp-save-tmpl-input {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 0.84rem;
+  border: 1px solid var(--border-subtle, #ddd);
+  border-radius: var(--radius-md, 8px);
+  background: var(--input-bg, #fff);
+  color: var(--text-body, #333);
+  min-width: 0;
+}
+.mp-save-tmpl-input::placeholder { color: var(--text-muted, #aaa); }
 
 /* -- Tabs ---------------------------------------------------------------------- */
 .mp-tabs {
@@ -535,7 +554,133 @@
 }
 .template-name { font-size: 0.9rem; font-weight: 600; color: var(--text-heading); }
 .template-date { font-size: 0.76rem; color: var(--text-muted); font-family: var(--font-sans); }
+.template-meal-count { font-size: 0.74rem; color: var(--text-muted); font-family: var(--font-sans); }
 .template-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* -- View template modal ------------------------------------------------------- */
+.view-tmpl-body {
+  padding: 4px 0 12px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.view-tmpl-day {
+  margin-bottom: 16px;
+}
+.view-tmpl-day-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.view-tmpl-meal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+.view-tmpl-recipe {
+  font-size: 0.88rem;
+  color: var(--text-body);
+}
+
+/* -- Load template modal (timeline + drag-and-drop) ---------------------------- */
+.tmpl-load-modal {
+  max-width: 520px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+.tmpl-load-date-row {
+  padding: 0 0 10px;
+  flex-shrink: 0;
+}
+.tmpl-arrange-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  margin: 0 0 8px;
+  flex-shrink: 0;
+}
+.tmpl-arrange-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.tmpl-slot {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--canvas-bg, #f8f5f0);
+  border: 1px solid var(--border-subtle, #e2ddd7);
+  border-radius: var(--radius-sm, 6px);
+  padding: 9px 12px;
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow 0.12s, opacity 0.12s;
+}
+.tmpl-slot:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.tmpl-slot--dragging {
+  opacity: 0.45;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  cursor: grabbing;
+}
+.tmpl-slot-handle {
+  font-size: 1rem;
+  color: var(--text-muted);
+  padding-top: 2px;
+  cursor: grab;
+  flex-shrink: 0;
+}
+.tmpl-slot-date-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 44px;
+  flex-shrink: 0;
+}
+.tmpl-slot-dow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+.tmpl-slot-mday {
+  font-size: 0.82rem;
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+.tmpl-slot-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tmpl-slot-meal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tmpl-slot-recipe {
+  font-size: 0.85rem;
+  color: var(--text-body);
+  font-family: var(--font-sans);
+}
+.tmpl-slot-empty {
+  font-size: 0.8rem;
+  color: var(--text-placeholder, #aaa);
+  font-family: var(--font-sans);
+  font-style: italic;
+}
 
 /* -- Shared tab helpers -------------------------------------------------------- */
 .tab-section-title {
@@ -867,7 +1012,8 @@
   cursor: pointer;
 }
 .shop-item-name { font-size: 0.9rem; color: var(--text-body, #333); }
-.shop-item-qty  { font-size: 0.8rem; color: var(--text-muted, #888); white-space: nowrap; }
+.shop-item-qty  { font-size: 0.78rem; color: var(--text-muted, #888); white-space: nowrap; background: #f0f4f8; padding: 2px 7px; border-radius: 10px; }
+.shop-item-have { font-size: 0.75rem; color: #4caf8c; white-space: nowrap; background: #e8f5e9; padding: 2px 7px; border-radius: 10px; }
 .btn-add-pantry {
   padding: 4px 10px;
   background: var(--accent-green, #4caf8c);
@@ -1100,6 +1246,82 @@
 .nut-pie-lbl { color: var(--text-body, #333); min-width: 60px; }
 .nut-pie-pct { font-weight: 700; color: var(--text-heading, #1a1a2e); }
 
+/* == Nutrition: new weekly block (pie first, days below) ===================== */
+.nut-weekly-block {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.nut-summary-row {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  background: var(--card-bg, #fff);
+  border-radius: var(--radius-md, 10px);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+  flex-wrap: wrap;
+}
+.nut-pie-big-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.nut-pie-big {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  /* background set inline as conic-gradient */
+}
+.nut-summary-right {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nut-summary-title {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0;
+}
+.nut-macro-list {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.nut-macro-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.nut-macro-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  font-family: var(--font-serif);
+  line-height: 1.2;
+}
+.nut-macro-lbl {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-sans);
+}
+.nut-day-section-title {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0 0 4px;
+}
+
 /* == Nut day rows ============================================================ */
 .nut-period { font-size: 0.82rem; color: var(--text-muted, #888); }
 .nut-missed-banner {
@@ -1158,4 +1380,41 @@
   font-size: 0.82rem;
   color: var(--text-muted, #888);
   margin: 0;
+}
+
+/* == Selected-recipe banner ================================================= */
+.selected-recipe-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #e8f4fd;
+  border: 1px solid #90caf9;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  color: #1565c0;
+  margin-bottom: 12px;
+}
+.selected-recipe-label { flex: 1; }
+
+/* == Click-to-assign styles ================================================= */
+.click-assign-mode .cal-slot.click-target:not(.past-slot):hover {
+  background: rgba(33, 150, 243, 0.08);
+  outline: 2px dashed #1976d2;
+  outline-offset: -2px;
+}
+.mp-recipe-card.recipe-selected {
+  outline: 2px solid var(--accent-orange, #e8622a);
+  outline-offset: 1px;
+  background: rgba(232, 98, 42, 0.06);
+}
+.suggestion-chip.selected {
+  outline: 2px solid var(--accent-orange, #e8622a);
+  background: rgba(232, 98, 42, 0.06);
+}
+.chip-match {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+  margin-left: auto;
+  white-space: nowrap;
 }

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getSavedLists, clearList, toggleListItem } from '../utils/shoppingListStore';
+import { getSavedLists, clearList, toggleListItem, markAllListItems } from '../utils/shoppingListStore';
 import { addPantryItem, searchIngredients } from '../api/PantryApi';
 import './ShoppingList.css';
 
@@ -73,6 +73,10 @@ export default function ShoppingList() {
     if (failed > 0) addToast(failed + ' item' + (failed !== 1 ? 's' : '') + ' could not be found.', 'warning');
   }
 
+  function handleMarkAllChecked(listId) {
+    setLists(markAllListItems(listId, true));
+  }
+
   function handleRemoveAll(listId) {
     setLists(clearList(listId));
     if (openId === listId) setOpenId(null);
@@ -86,13 +90,14 @@ export default function ShoppingList() {
       (i.ingredient_name || i.name || '') +
       (i.quantity ? '  ' + i.quantity + (i.unit ? ' ' + i.unit : '') : '')
     );
-    const text = header + '\n' + '-'.repeat(40) + '\n' + lines.join('\n');
+    const hint = '\n(Check boxes when you have the item)';
+    const text = header + '\n' + '-'.repeat(40) + '\n' + lines.join('\n') + hint;
     navigator.clipboard.writeText(text)
       .then(() => addToast('List copied to clipboard!', 'success'))
       .catch(() => addToast('Could not copy to clipboard', 'error'));
   }
 
-  function printList(list) {
+  function downloadPdf(list) {
     const header = list.source + ' - ' + new Date(list.date).toLocaleString();
     const rows   = list.items.map(i =>
       '<tr><td style="width:24px;text-align:center;border:1px solid #ccc">' +
@@ -105,9 +110,11 @@ export default function ShoppingList() {
     ).join('');
     const html = '<!DOCTYPE html><html><head><title>Shopping List</title>' +
       '<style>body{font-family:sans-serif;padding:24px}h2{margin-bottom:8px}' +
+      'p.hint{font-size:0.8rem;color:#888;margin-bottom:12px}' +
       'table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px}' +
-      'th{background:#f5f5f5;text-align:left}@media print{.no-print{display:none}}</style>' +
+      'th{background:#f5f5f5;text-align:left}</style>' +
       '</head><body><h2>' + header + '</h2>' +
+      '<p class="hint">Tick a box when you have the item.</p>' +
       '<table><thead><tr><th></th><th>Ingredient</th><th>Quantity</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></body></html>';
     const w = window.open('', '_blank');
@@ -196,7 +203,14 @@ export default function ShoppingList() {
                 <div className="sl-paper-expanded">
                   <div className="sl-expanded-toolbar">
                     <button className="sl-tool-btn" onClick={() => copyToText(list)} title="Copy to clipboard">Copy Text</button>
-                    <button className="sl-tool-btn" onClick={() => printList(list)}  title="Print / Save as PDF">Print / PDF</button>
+                    <button className="sl-tool-btn" onClick={() => downloadPdf(list)}  title="Download as PDF">Download PDF</button>
+                    <button
+                      className="sl-tool-btn sl-tool-check"
+                      onClick={() => handleMarkAllChecked(list.id)}
+                      title="Mark all items as checked"
+                    >
+                      Mark All Checked
+                    </button>
                     <button
                       className="sl-tool-btn sl-tool-pantry"
                       disabled={addingAll}
@@ -213,6 +227,7 @@ export default function ShoppingList() {
                       Remove List
                     </button>
                   </div>
+                  <p className="sl-check-hint">&#10003; Check off an item when you&rsquo;ve got it.</p>
 
                   <div className="sl-expanded-items">
                     {list.items.map((item, idx) => {

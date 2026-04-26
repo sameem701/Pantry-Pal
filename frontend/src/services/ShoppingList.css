@@ -164,6 +164,9 @@
 .sl-tool-pantry { border-color: var(--accent-green, #4caf8c); color: var(--accent-green, #4caf8c); }
 .sl-tool-pantry:hover:not(:disabled) { background: #e8f8f1; }
 .sl-tool-pantry:disabled { opacity: 0.55; cursor: not-allowed; }
+.sl-tool-check { border-color: #6c8ebf; color: #4a6fa5; }
+.sl-tool-check:hover { background: #eef2ff; }
+.sl-check-hint { font-size: 0.78rem; color: #888; margin: 4px 0 10px; }
 
 /* Expanded items list */
 .sl-expanded-items {

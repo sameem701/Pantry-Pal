@@ -1393,10 +1393,14 @@ BEGIN
         'meal_type',    mpr.meal_type,
         'is_cooked',    mpr.is_cooked,
         'recipe_id',    r.recipe_id,
-        'title',        r.title,
+        'recipe_title', r.title,
         'difficulty',   r.difficulty,
         'cooking_time', r.cooking_time_min,
-        'image_url',    r.image_url
+        'image_url',    r.image_url,
+        'calories',     COALESCE(rn.calories, 0),
+        'protein_g',    COALESCE(rn.protein_g, 0),
+        'carbs_g',      COALESCE(rn.carbs_g, 0),
+        'fat_g',        COALESCE(rn.fat_g, 0)
     ) ORDER BY
         CASE mpr.day_of_week
             WHEN 'Sunday'    THEN 0 WHEN 'Monday'   THEN 1 WHEN 'Tuesday'  THEN 2
@@ -1410,6 +1414,7 @@ BEGIN
     INTO v_meals
     FROM meal_plan_recipes mpr
     JOIN recipes r ON r.recipe_id = mpr.recipe_id
+    LEFT JOIN recipe_nutrition rn ON rn.recipe_id = r.recipe_id
     WHERE mpr.plan_id = p_plan_id;
 
     RETURN json_build_object(
@@ -1618,10 +1623,18 @@ $$ LANGUAGE plpgsql;
 --  SECTION 8: SHOPPING LIST
 -- ============================================================
 
--- 8.1  Get raw ingredient breakdown for AI normalization
---      No unit aggregation is performed here.
---      Example output for one ingredient:
---      "340 grams + 1 cup + 2 pieces + 100 grams"
+-- 8.1  Get missing ingredients with unit normalization
+--      Algorithm:
+--        1. Sum all recipe quantities for the plan, converting to base unit
+--           (g for weight, ml for volume, piece for count)
+--        2. Compare against pantry amount (also converted to base unit)
+--        3. Only return ingredients where deficit > threshold:
+--             weight  >= 5 g
+--             volume  >= 5 ml
+--             count   >= 1 piece
+--        4. Display quantity:
+--             - single unit used across all recipes → convert deficit back to that unit
+--             - mixed units                         → show in base unit (g / ml / piece)
 CREATE OR REPLACE FUNCTION get_missing_ingredients(
     p_plan_id INTEGER,
     p_user_id INTEGER
@@ -1631,46 +1644,109 @@ DECLARE v_result JSON;
 BEGIN
     SELECT json_agg(json_build_object(
         'ingredient_name', ingredient_name,
-        'category', category,
-        'raw_breakdown', raw_breakdown,
-        'pantry_quantity', pantry_quantity,
-        'pantry_unit', pantry_unit,
-        'pantry_display', pantry_display,
-        'occurrences', occurrences
-    ))
+        'category',        category,
+        'raw_breakdown',   quantity_display,
+        'pantry_quantity', have_qty_raw,
+        'pantry_unit',     pantry_unit_raw,
+        'pantry_display',  pantry_display,
+        'occurrences',     occurrences
+    ) ORDER BY category, ingredient_name)
     INTO v_result
     FROM (
-        SELECT 
-            i.ingredient_name,
-            i.category,
-            STRING_AGG(
-                TRIM(to_char(ri.quantity, 'FM999999990.##')) || ' ' || COALESCE(NULLIF(ri.unit, ''), 'unit'),
-                ' + '
-                ORDER BY ri.recipe_id, ri.ingredient_id
-            ) AS raw_breakdown,
-            COALESCE(MAX(pi.quantity), 0) AS pantry_quantity,
-            COALESCE(MAX(pi.unit), '') AS pantry_unit,
+        -- Step 1: total needed per ingredient, normalised to base unit
+        WITH needed AS (
+            SELECT
+                i.ingredient_id,
+                i.ingredient_name,
+                i.category,
+                COUNT(*)                                                AS occurrences,
+                COALESCE(MAX(uc.base_unit), 'piece')                    AS base_unit,
+                SUM(ri.quantity * COALESCE(uc.factor, 1))               AS needed_base,
+                COUNT(DISTINCT ri.unit)                                 AS distinct_units,
+                MAX(ri.unit)                                            AS original_unit,
+                MAX(uc.factor)                                          AS original_factor
+            FROM meal_plan_recipes mpr
+            JOIN recipe_ingredients ri ON ri.recipe_id = mpr.recipe_id
+            JOIN ingredients        i  ON i.ingredient_id = ri.ingredient_id
+            LEFT JOIN unit_conversions uc
+                   ON LOWER(TRIM(COALESCE(ri.unit, ''))) = uc.from_unit
+            WHERE mpr.plan_id = p_plan_id
+              AND mpr.is_cooked = FALSE
+              AND ri.quantity > 0
+            GROUP BY i.ingredient_id, i.ingredient_name, i.category
+        ),
+        -- Step 2: pantry stock in base unit (same base_unit match required)
+        have AS (
+            SELECT
+                pi.ingredient_id,
+                COALESCE(uc.base_unit, 'piece')                         AS base_unit,
+                pi.quantity * COALESCE(uc.factor, 1)                    AS have_base,
+                pi.quantity                                             AS qty_raw,
+                COALESCE(pi.unit, '')                                   AS unit_raw,
+                CASE
+                    WHEN COALESCE(pi.quantity, 0) = 0     THEN '0'
+                    WHEN COALESCE(pi.unit, '')  = ''      THEN TRIM(to_char(pi.quantity, 'FM999999990.##'))
+                    ELSE TRIM(to_char(pi.quantity, 'FM999999990.##')) || ' ' || pi.unit
+                END AS display
+            FROM pantry_items pi
+            LEFT JOIN unit_conversions uc
+                   ON LOWER(TRIM(COALESCE(pi.unit, ''))) = uc.from_unit
+            WHERE pi.user_id = p_user_id
+        ),
+        -- Step 3: deficit = needed − have
+        deficit AS (
+            SELECT
+                n.ingredient_name,
+                n.category,
+                n.occurrences,
+                n.base_unit,
+                n.needed_base,
+                COALESCE(h.have_base, 0)                                AS have_base,
+                n.needed_base - COALESCE(h.have_base, 0)               AS deficit_base,
+                n.distinct_units,
+                n.original_unit,
+                n.original_factor,
+                COALESCE(h.qty_raw, 0)                                  AS have_qty_raw,
+                COALESCE(h.unit_raw, '')                                AS pantry_unit_raw,
+                COALESCE(h.display, '0')                               AS pantry_display
+            FROM needed n
+            -- only match pantry if it uses the same physical dimension
+            LEFT JOIN have h ON h.ingredient_id = n.ingredient_id
+                             AND h.base_unit     = n.base_unit
+        )
+        -- Step 4: filter by threshold and format display
+        SELECT
+            ingredient_name,
+            category,
+            occurrences,
+            have_qty_raw,
+            pantry_unit_raw,
+            pantry_display,
             CASE
-                WHEN COALESCE(MAX(pi.quantity), 0) = 0 THEN '0'
-                WHEN COALESCE(MAX(pi.unit), '') = '' THEN TRIM(to_char(COALESCE(MAX(pi.quantity), 0), 'FM999999990.##'))
-                ELSE TRIM(to_char(COALESCE(MAX(pi.quantity), 0), 'FM999999990.##')) || ' ' || MAX(pi.unit)
-            END AS pantry_display,
-            COUNT(*) AS occurrences
-            
-        FROM meal_plan_recipes mpr
-        JOIN recipe_ingredients ri ON ri.recipe_id = mpr.recipe_id
-        JOIN ingredients i ON i.ingredient_id = ri.ingredient_id
-        LEFT JOIN pantry_items pi 
-            ON pi.ingredient_id = i.ingredient_id AND pi.user_id = p_user_id
-        WHERE mpr.plan_id = p_plan_id AND mpr.is_cooked = FALSE
-        GROUP BY i.ingredient_id, i.ingredient_name, i.category
-        ORDER BY i.category, i.ingredient_name
+                -- single unit across all recipes → show in that original unit
+                WHEN distinct_units = 1 AND original_factor IS NOT NULL
+                    THEN TRIM(to_char(
+                             ROUND((deficit_base / original_factor)::NUMERIC, 2),
+                             'FM999999990.##'))
+                         || ' ' || original_unit
+                -- mixed units → show in base unit
+                ELSE TRIM(to_char(ROUND(deficit_base::NUMERIC, 1), 'FM999999990.##'))
+                     || ' ' || base_unit
+            END AS quantity_display
+        FROM deficit
+        WHERE
+            deficit_base > 0
+            AND (
+                (base_unit = 'g'  AND deficit_base >= 5)   OR
+                (base_unit = 'ml' AND deficit_base >= 5)
+            )
+        ORDER BY category, ingredient_name
     ) missing_items;
 
     RETURN json_build_object(
-        'success', true, 
-        'data', COALESCE(v_result, '[]'::JSON),
-        'message', 'Raw ingredient breakdown generated for AI normalization'
+        'success', true,
+        'data',    COALESCE(v_result, '[]'::JSON),
+        'message', 'Normalised ingredient comparison: only items you genuinely need more of'
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -1780,6 +1856,11 @@ BEGIN
         RETURN json_build_object('success', false, 'message', 'Plan has no meals to save');
     END IF;
 
+    -- Prevent duplicate template names for the same user
+    IF EXISTS (SELECT 1 FROM saved_plan_templates WHERE user_id = p_user_id AND LOWER(name) = LOWER(p_name)) THEN
+        RETURN json_build_object('success', false, 'message', 'A template with this name already exists');
+    END IF;
+
     INSERT INTO saved_plan_templates (user_id, name, meal_data)
     VALUES (p_user_id, p_name, v_meal_data)
     RETURNING template_id INTO v_tmpl_id;
@@ -1801,15 +1882,19 @@ CREATE OR REPLACE FUNCTION load_template_into_plan(
 )
 RETURNS JSON AS $$
 DECLARE
-    v_meal_data JSON;
-    v_slot      JSON;
+    v_meal_data JSONB;
+    v_slot      JSONB;
 BEGIN
-    SELECT meal_data INTO v_meal_data
+    SELECT meal_data::JSONB INTO v_meal_data
     FROM saved_plan_templates
     WHERE template_id = p_template_id AND user_id = p_user_id;
 
     IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'message', 'Template not found');
+    END IF;
+
+    IF v_meal_data IS NULL OR jsonb_typeof(v_meal_data) <> 'array' THEN
+        RETURN json_build_object('success', false, 'message', 'Template has no meal data');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
@@ -1819,7 +1904,7 @@ BEGIN
     -- Replace all slots in the target plan with the template's slots
     DELETE FROM meal_plan_recipes WHERE plan_id = p_plan_id;
 
-    FOR v_slot IN SELECT * FROM json_array_elements(v_meal_data)
+    FOR v_slot IN SELECT value FROM jsonb_array_elements(v_meal_data)
     LOOP
         INSERT INTO meal_plan_recipes (plan_id, recipe_id, day_of_week, meal_type)
         VALUES (
@@ -1836,19 +1921,54 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 9.3  Get all saved templates for a user
+-- 9.3  Get all saved templates for a user (includes resolved meal list with recipe titles)
 CREATE OR REPLACE FUNCTION get_user_templates(p_user_id INTEGER)
 RETURNS JSON AS $$
 DECLARE v_result JSON;
 BEGIN
-    SELECT json_agg(json_build_object(
-        'template_id', template_id,
-        'name',        name,
-        'created_at',  created_at
-    ) ORDER BY created_at DESC)
+    SELECT json_agg(
+        json_build_object(
+            'template_id', t.template_id,
+            'name',        t.name,
+            'created_at',  t.created_at,
+            'meals',       (
+                SELECT COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'day_of_week',  m_data->>'day_of_week',
+                            'meal_type',    m_data->>'meal_type',
+                            'recipe_id',    (m_data->>'recipe_id')::INTEGER,
+                            'recipe_title', COALESCE(r.title, 'Recipe #' || (m_data->>'recipe_id'))
+                        )
+                        ORDER BY
+                            CASE m_data->>'day_of_week'
+                                WHEN 'Sunday'    THEN 0 WHEN 'Monday'    THEN 1 WHEN 'Tuesday'  THEN 2
+                                WHEN 'Wednesday' THEN 3 WHEN 'Thursday'  THEN 4 WHEN 'Friday'   THEN 5
+                                WHEN 'Saturday'  THEN 6 ELSE 7
+                            END,
+                            CASE m_data->>'meal_type'
+                                WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'dinner' THEN 2
+                                ELSE 3
+                            END
+                    ),
+                    '[]'::JSON
+                )
+                FROM json_array_elements(
+                    -- Guard against non-array meal_data to prevent "cannot call
+                    -- json_array_elements on a non-array" errors
+                    CASE WHEN json_typeof(t.meal_data) = 'array'
+                         THEN t.meal_data
+                         ELSE '[]'::JSON
+                    END
+                ) AS m_data
+                LEFT JOIN recipes r ON r.recipe_id = (m_data->>'recipe_id')::INTEGER
+            )
+        )
+        ORDER BY t.created_at DESC
+    )
     INTO v_result
-    FROM saved_plan_templates
-    WHERE user_id = p_user_id;
+    FROM saved_plan_templates t
+    WHERE t.user_id = p_user_id;
 
     RETURN json_build_object('success', true, 'data', COALESCE(v_result, '[]'::JSON));
 END;

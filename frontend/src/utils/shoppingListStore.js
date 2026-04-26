@@ -15,7 +15,7 @@ export function saveShoppingListLocally(items, source = 'Meal Plan') {
         id: Date.now(),
         source,
         date: new Date().toISOString(),
-        items: items.map(i => ({ ...i, is_checked: true })),
+        items: items.map(i => ({ ...i, is_checked: i.is_checked ?? false })),
     };
     const updated = [newList, ...lists].slice(0, 30);
     localStorage.setItem(KEY, JSON.stringify(updated));
@@ -35,6 +35,15 @@ export function toggleListItem(listId, itemIdx) {
 
 export function clearList(listId) {
     const lists = getSavedLists().filter(l => l.id !== listId);
+    localStorage.setItem(KEY, JSON.stringify(lists));
+    return lists;
+}
+
+export function markAllListItems(listId, checked = true) {
+    const lists = getSavedLists().map(l => {
+        if (l.id !== listId) return l;
+        return { ...l, items: l.items.map(i => ({ ...i, is_checked: checked })) };
+    });
     localStorage.setItem(KEY, JSON.stringify(lists));
     return lists;
 }

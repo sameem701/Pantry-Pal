@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { getRecipeDetails, toggleFavourite, getReviews, upsertReview, deleteReview } from '../api/RecipeApi';
+import { saveShoppingListLocally } from '../utils/shoppingListStore';
 import ConfirmModal from '../components/ConfirmModal';
 import './RecipeDetail.css';
 
@@ -28,6 +29,7 @@ export default function RecipeDetail() {
   const [myReviewText, setMyReviewText] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [confirmDeleteReview, setConfirmDeleteReview] = useState(false);
+  const [shopGenerated,       setShopGenerated]       = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -100,6 +102,25 @@ export default function RecipeDetail() {
     }
   }
 
+  function handleGenerateShoppingList() {
+    const missing = ingredients.filter(ing => ing.in_pantry === false || ing.in_pantry === 0);
+    if (missing.length === 0) {
+      addToast('You already have all the ingredients for this recipe!', 'success');
+      return;
+    }
+    const items = missing.map(ing => ({
+      ingredient_name: ing.ingredient_name || ing.name || '',
+      quantity: String(ing.required_qty ?? ing.quantity ?? ''),
+      unit: ing.unit || '',
+      ingredient_id: ing.ingredient_id || null,
+      is_checked: false,
+    }));
+    saveShoppingListLocally(items, recipe.title || 'Recipe');
+    addToast('Shopping list created for missing ingredients!', 'success');
+    setShopGenerated(true);
+    navigate('/shopping-list');
+  }
+
   if (loading) return <div className="rd-loading">Loading recipe…</div>;
   if (error) return <div className="rd-error">{error}</div>;
   if (!recipe) return null;
@@ -157,21 +178,35 @@ export default function RecipeDetail() {
 
         {/* Ingredients */}
         <div className="rd-section">
-          <h2 className="rd-section-title">Ingredients</h2>
+          <div className="rd-section-header">
+            <h2 className="rd-section-title">Ingredients</h2>
+            {ingredients.some(ing => ing.in_pantry === false || ing.in_pantry === 0) && (
+              <button className="rd-shop-btn" onClick={handleGenerateShoppingList}>
+                🛒 Shopping List for Missing
+              </button>
+            )}
+          </div>
           {ingredients.length === 0
             ? <p className="rd-none">No ingredients listed.</p>
             : (
               <ul className="rd-ingredients">
                 {ingredients.map((ing, i) => {
                   const available = ing.in_pantry ?? ing.is_available ?? true;
+                  const reqQty    = ing.required_qty ?? ing.quantity;
                   return (
                     <li key={i} className={`rd-ing${available ? ' available' : ' missing'}`}>
                       <span className="ing-dot">{available ? '✓' : '✗'}</span>
                       <span className="ing-text">
-                        {ing.quantity && <strong>{ing.quantity} {ing.unit} </strong>}
+                        {reqQty != null && reqQty !== '' && <strong>{reqQty}{ing.unit ? ' ' + ing.unit : ''} </strong>}
                         {ing.name || ing.ingredient_name}
                       </span>
-                      {!available && <span className="ing-missing-label">missing</span>}
+                      {!available && (
+                        <span className="ing-missing-label" data-have={ing.pantry_qty > 0 ? true : undefined}>
+                          {ing.pantry_qty > 0
+                            ? `Have: ${ing.pantry_qty}${ing.pantry_unit ? ' ' + ing.pantry_unit : ''}`
+                            : 'missing'}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -209,6 +244,39 @@ export default function RecipeDetail() {
               {dietaryTags.map((t, i) => (
                 <span key={i} className="diet-tag">{typeof t === 'string' ? t : t.name || t.label || t.preference_name || ''}</span>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Nutrition */}
+        {recipe.nutrition && (
+          <div className="rd-section">
+            <h2 className="rd-section-title">Nutrition (per serving)</h2>
+            <div className="rd-nutrition-grid">
+              {recipe.nutrition.calories != null && (
+                <div className="rd-nut-card rd-nut-cal">
+                  <span className="rd-nut-val">{Math.round(recipe.nutrition.calories)}</span>
+                  <span className="rd-nut-lbl">kcal</span>
+                </div>
+              )}
+              {recipe.nutrition.protein_g != null && (
+                <div className="rd-nut-card rd-nut-protein">
+                  <span className="rd-nut-val">{Number(recipe.nutrition.protein_g).toFixed(1)}g</span>
+                  <span className="rd-nut-lbl">Protein</span>
+                </div>
+              )}
+              {recipe.nutrition.carbs_g != null && (
+                <div className="rd-nut-card rd-nut-carbs">
+                  <span className="rd-nut-val">{Number(recipe.nutrition.carbs_g).toFixed(1)}g</span>
+                  <span className="rd-nut-lbl">Carbs</span>
+                </div>
+              )}
+              {recipe.nutrition.fat_g != null && (
+                <div className="rd-nut-card rd-nut-fat">
+                  <span className="rd-nut-val">{Number(recipe.nutrition.fat_g).toFixed(1)}g</span>
+                  <span className="rd-nut-lbl">Fat</span>
+                </div>
+              )}
             </div>
           </div>
         )}
