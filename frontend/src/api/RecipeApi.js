@@ -2,8 +2,11 @@ import { apiRequest } from './client';
 
 // ── Browse / Search ───────────────────────────────────────────────────────────
 
-export function searchByPantry(userId, page = 1, limit = 12) {
-    return apiRequest(`/recipes/search-by-pantry/${userId}?page=${page}&limit=${limit}`);
+export function searchByPantry({ userId, difficulty, cuisineId, page = 1, limit = 12 } = {}) {
+    const params = new URLSearchParams({ page, limit });
+    if (difficulty) params.set('difficulty', difficulty);
+    if (cuisineId)  params.set('cuisine_id', cuisineId);
+    return apiRequest(`/recipes/search-by-pantry/${userId}?${params}`);
 }
 
 export function browseRecipes({ userId, q, difficulty, cuisineId, dietaryPreference, sortBy = 'trending', page = 1, limit = 12 }) {

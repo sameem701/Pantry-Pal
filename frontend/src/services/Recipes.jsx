@@ -3,28 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProfile } from '../api/UserApi';
 import {
-  browseRecipes, listCuisineOptions, listDietaryOptions, toggleFavourite,
+  browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
 } from '../api/RecipeApi';
 import './Recipes.css';
 
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
-const SORT_OPTIONS = [
-  { value: 'trending', label: 'Trending' },
-  { value: 'rating',   label: 'Top Rated' },
-  { value: 'newest',   label: 'Newest' },
-];
 
 export default function Recipes() {
   const { user } = useAuth();
   const userId = user?.user_id;
   const navigate = useNavigate();
 
+  // mode: 'pantry' (default) | 'all'
+  const [mode,         setMode]         = useState('pantry');
+  const [filterOpen,   setFilterOpen]   = useState(false);
+
   const [query,        setQuery]        = useState('');
   const [difficulty,   setDifficulty]   = useState('');
   const [cuisineId,    setCuisineId]    = useState('');
   const [dietary,      setDietary]      = useState('');
-  const [sortBy,       setSortBy]       = useState('trending');
+  const [sortBy,       setSortBy]       = useState('rating'); // 'rating' | 'newest'
   const [filtersReady, setFiltersReady] = useState(false);
+
+  // Pending filter state inside modal (only applied on Apply)
+  const [pendingDifficulty, setPendingDifficulty] = useState('');
+  const [pendingCuisineId,  setPendingCuisineId]  = useState('');
+  const [pendingDietary,    setPendingDietary]     = useState('');
 
   const [cuisineOptions, setCuisineOptions] = useState([]);
   const [dietaryOptions, setDietaryOptions] = useState([]);
@@ -43,8 +47,8 @@ export default function Recipes() {
       .then(([cData, dData]) => {
         const cuisines = cData?.cuisines ?? cData?.data ?? cData ?? [];
         setCuisineOptions(Array.isArray(cuisines) ? cuisines : []);
-        const dietary = dData?.dietary_preferences ?? dData?.data ?? dData ?? [];
-        setDietaryOptions(Array.isArray(dietary) ? dietary : []);
+        const diet = dData?.dietary_preferences ?? dData?.data ?? dData ?? [];
+        setDietaryOptions(Array.isArray(diet) ? diet : []);
       })
       .catch(() => { setCuisineOptions([]); setDietaryOptions([]); });
 
@@ -56,12 +60,12 @@ export default function Recipes() {
           if (profile.skill_level) {
             const map = { beginner: 'Easy', intermediate: 'Medium', advanced: 'Hard' };
             const mapped = map[profile.skill_level.toLowerCase()] ?? '';
-            if (mapped) setDifficulty(mapped);
+            if (mapped) { setDifficulty(mapped); setPendingDifficulty(mapped); }
           }
           if (Array.isArray(profile.dietary_preferences) && profile.dietary_preferences.length > 0) {
             const pref = profile.dietary_preferences[0];
             const name = pref.preference_name || pref.name || '';
-            if (name) setDietary(name);
+            if (name) { setDietary(name); setPendingDietary(name); }
           }
         })
         .catch(() => {})
@@ -71,12 +75,13 @@ export default function Recipes() {
     }
   }, [userId]);
 
-  // Reload on filter changes (after profile pre-fill completes)
+  // Reload when mode, filters, or sort changes
   useEffect(() => {
     if (!filtersReady) return;
     setPage(1);
     fetchRecipes(1, true);
-  }, [filtersReady, difficulty, cuisineId, dietary, sortBy]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersReady, mode, difficulty, cuisineId, dietary, sortBy]);
 
   // Debounce text search
   useEffect(() => {
@@ -87,24 +92,44 @@ export default function Recipes() {
       fetchRecipes(1, true);
     }, 400);
     return () => clearTimeout(searchTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   async function fetchRecipes(p = page, reset = false) {
     setLoading(true);
     setError('');
     try {
-      const data = await browseRecipes({
-        userId,
-        q:               query      || undefined,
-        difficulty:      difficulty || undefined,
-        cuisineId:       cuisineId  || undefined,
-        dietaryPreference: dietary  || undefined,
-        sortBy,
-        page: p,
-        limit: 20,
-      });
-      const raw  = data?.recipes ?? data?.data ?? data?.items ?? data;
-      const list = Array.isArray(raw) ? raw : [];
+      let list = [];
+      if (mode === 'pantry') {
+        const data = await searchByPantry({
+          userId,
+          difficulty: difficulty || undefined,
+          cuisineId:  cuisineId  || undefined,
+          page: p,
+          limit: 20,
+        });
+        const raw = data?.recipes ?? data?.data ?? data?.items ?? data;
+        list = Array.isArray(raw) ? raw : [];
+        // Sort by missing count ascending (0 missing first)
+        list = [...list].sort((a, b) => {
+          const ma = a.missing_count ?? a.missing_ingredients_count ?? 999;
+          const mb = b.missing_count ?? b.missing_ingredients_count ?? 999;
+          return ma - mb;
+        });
+      } else {
+        const data = await browseRecipes({
+          userId,
+          q:                 query      || undefined,
+          difficulty:        difficulty || undefined,
+          cuisineId:         cuisineId  || undefined,
+          dietaryPreference: dietary    || undefined,
+          sortBy,
+          page: p,
+          limit: 20,
+        });
+        const raw = data?.recipes ?? data?.data ?? data?.items ?? data;
+        list = Array.isArray(raw) ? raw : [];
+      }
       setRecipes(prev => reset ? list : [...prev, ...list]);
       setHasMore(list.length >= 20);
     } catch (err) {
@@ -120,15 +145,37 @@ export default function Recipes() {
     fetchRecipes(next, false);
   }
 
-  function clearFilters() {
+  function openFilterModal() {
+    setPendingDifficulty(difficulty);
+    setPendingCuisineId(cuisineId);
+    setPendingDietary(dietary);
+    setFilterOpen(true);
+  }
+
+  function applyFilters() {
+    setDifficulty(pendingDifficulty);
+    setCuisineId(pendingCuisineId);
+    setDietary(pendingDietary);
+    setFilterOpen(false);
+  }
+
+  function clearFiltersInModal() {
+    setPendingDifficulty('');
+    setPendingCuisineId('');
+    setPendingDietary('');
+  }
+
+  function clearAllFilters() {
     setQuery('');
     setDifficulty('');
     setCuisineId('');
     setDietary('');
-    setSortBy('trending');
+    setPendingDifficulty('');
+    setPendingCuisineId('');
+    setPendingDietary('');
   }
 
-  const hasActive = query || difficulty || cuisineId || dietary || sortBy !== 'trending';
+  const hasActiveFilters = difficulty || cuisineId || dietary;
 
   async function handleFavourite(e, recipeId) {
     e.stopPropagation();
@@ -142,13 +189,38 @@ export default function Recipes() {
 
   return (
     <div className="recipes-page">
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="recipes-header">
-        <div className="recipes-title-row">
-          <h1 className="recipes-title">All Recipes</h1>
+        <div className="recipes-title-sort-row">
+          <h1 className="recipes-title">Recipes</h1>
+          <div className="recipes-sort-group">
+            <span className="sort-label">Sort by</span>
+            <button
+              className={'sort-btn' + (sortBy === 'rating' ? ' active' : '')}
+              onClick={() => setSortBy('rating')}
+            >Top Rated</button>
+            <button
+              className={'sort-btn' + (sortBy === 'newest' ? ' active' : '')}
+              onClick={() => setSortBy('newest')}
+            >Newest</button>
+          </div>
         </div>
 
-        {/* Search bar */}
-        <div className="recipes-search-row">
+        {/* Controls row */}
+        <div className="recipes-controls-row">
+          {/* Mode toggle */}
+          <div className="mode-toggle">
+            <button
+              className={'mode-btn' + (mode === 'pantry' ? ' active' : '')}
+              onClick={() => { setMode('pantry'); setPage(1); }}
+            >Pantry</button>
+            <button
+              className={'mode-btn' + (mode === 'all' ? ' active' : '')}
+              onClick={() => { setMode('all'); setPage(1); }}
+            >All Recipes</button>
+          </div>
+
+          {/* Search */}
           <div className="recipes-search-wrap">
             <span className="search-icon">{String.fromCodePoint(0x1F50D)}</span>
             <input
@@ -162,47 +234,82 @@ export default function Recipes() {
               <button className="search-clear" onClick={() => setQuery('')}>&times;</button>
             )}
           </div>
-          {hasActive && (
-            <button className="btn-clear-filters" onClick={clearFilters}>Clear All Filters</button>
+
+          {/* Clear filters (only when active) */}
+          {hasActiveFilters && (
+            <button className="btn-clear-filters" onClick={clearAllFilters}>Clear Filters</button>
           )}
-        </div>
 
-        {/* Filter panel */}
-        <div className="filters">
-          <select value={difficulty} onChange={e => setDifficulty(e.target.value)}>
-            <option value="">Skill Level (Any)</option>
-            {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-
-          <select value={cuisineId} onChange={e => setCuisineId(e.target.value)}>
-            <option value="">All Cuisines</option>
-            {cuisineOptions.map(c => (
-              <option key={c.cuisine_id ?? c.id ?? c.name} value={c.cuisine_id ?? c.id ?? ''}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          <select value={dietary} onChange={e => setDietary(e.target.value)}>
-            <option value="">No Dietary Filter</option>
-            {dietaryOptions.map(d => (
-              <option key={d.preference_id ?? d.id ?? d.preference_name ?? d.name} value={d.preference_name ?? d.name ?? d}>
-                {d.preference_name ?? d.name ?? d}
-              </option>
-            ))}
-          </select>
-
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          {/* Filters button */}
+          <button
+            className={'btn-filters' + (hasActiveFilters ? ' has-active' : '')}
+            onClick={openFilterModal}
+          >
+            {String.fromCodePoint(0x2699)} Filters{hasActiveFilters ? ' \u2022' : ''}
+          </button>
         </div>
       </div>
+
+      {/* ── Filter Modal ───────────────────────────────────────────── */}
+      {filterOpen && (
+        <div className="filter-overlay" onClick={() => setFilterOpen(false)}>
+          <div className="filter-modal" onClick={e => e.stopPropagation()}>
+            <div className="filter-modal-head">
+              <span className="filter-modal-title">Filters</span>
+              <div className="filter-modal-head-actions">
+                <button className="btn-filter-clear-all" onClick={clearFiltersInModal}>Clear All</button>
+                <button className="btn-filter-close" onClick={() => setFilterOpen(false)}>&times;</button>
+              </div>
+            </div>
+
+            <div className="filter-modal-body">
+              <label className="filter-label">
+                Skill Level
+                <select value={pendingDifficulty} onChange={e => setPendingDifficulty(e.target.value)}>
+                  <option value="">Any</option>
+                  {DIFFICULTIES.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+
+              <label className="filter-label">
+                Cuisine
+                <select value={pendingCuisineId} onChange={e => setPendingCuisineId(e.target.value)}>
+                  <option value="">All Cuisines</option>
+                  {cuisineOptions.map(c => (
+                    <option key={c.cuisine_id ?? c.id ?? c.name} value={c.cuisine_id ?? c.id ?? ''}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="filter-label">
+                Dietary
+                <select value={pendingDietary} onChange={e => setPendingDietary(e.target.value)}>
+                  <option value="">No Filter</option>
+                  {dietaryOptions.map(d => (
+                    <option key={d.preference_id ?? d.id ?? d.preference_name ?? d.name} value={d.preference_name ?? d.name ?? d}>
+                      {d.preference_name ?? d.name ?? d}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="filter-modal-foot">
+              <button className="btn-filter-apply" onClick={applyFilters}>Apply Filters</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <p className="recipes-error">{error}</p>}
 
       {!loading && recipes.length === 0 && !error && (
         <div className="recipes-empty">
-          No recipes match the selected filters.
+          {mode === 'pantry'
+            ? 'Add items to your pantry to see matching recipes.'
+            : 'No recipes match the selected filters.'}
         </div>
       )}
 
@@ -211,6 +318,7 @@ export default function Recipes() {
           <RecipeCard
             key={recipe.recipe_id}
             recipe={recipe}
+            pantryMode={mode === 'pantry'}
             onClick={() => navigate(`/recipes/${recipe.recipe_id}`)}
             onFavourite={e => handleFavourite(e, recipe.recipe_id)}
           />
@@ -232,9 +340,10 @@ export default function Recipes() {
   );
 }
 
-export function RecipeCard({ recipe, onClick, onFavourite }) {
-  const matchPct      = recipe.match_percentage ?? recipe.match_percent ?? null;
-  const missingCount  = recipe.missing_count ?? recipe.missing_ingredients_count ?? null;
+export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false }) {
+  const matchPct     = recipe.match_percentage ?? recipe.match_percent ?? null;
+  // DB returns 'missing_ingredients'; fall back to other naming variants
+  const missingCount = recipe.missing_ingredients ?? recipe.missing_count ?? recipe.missing_ingredients_count ?? null;
 
   return (
     <div className="recipe-card" onClick={onClick}>
@@ -270,18 +379,23 @@ export function RecipeCard({ recipe, onClick, onFavourite }) {
           )}
         </div>
 
-        {matchPct !== null && (
+        {/* Pantry match indicator */}
+        {pantryMode && missingCount !== null && (
+          missingCount === 0 ? (
+            <p className="pantry-all-present">&#10003; All ingredients present</p>
+          ) : (
+            <p className="pantry-missing">&#10007; {missingCount} ingredient{missingCount > 1 ? 's' : ''} missing</p>
+          )
+        )}
+
+        {/* Match bar (non-pantry mode) */}
+        {!pantryMode && matchPct !== null && (
           <div className="match-bar-wrap">
             <div className="match-bar">
               <div className="match-fill" style={{ width: `${matchPct}%` }} />
             </div>
             <span className="match-label">{Math.round(matchPct)}% match</span>
           </div>
-        )}
-
-        {missingCount === 0 && <p className="can-make">&#10003; You can make this!</p>}
-        {missingCount !== null && missingCount > 0 && (
-          <p className="missing-note">Missing {missingCount} ingredient{missingCount > 1 ? 's' : ''}</p>
         )}
 
         {recipe.average_rating > 0 && (
