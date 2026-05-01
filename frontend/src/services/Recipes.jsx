@@ -5,6 +5,7 @@ import { getProfile } from '../api/UserApi';
 import {
   browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
 } from '../api/RecipeApi';
+import { getRecentlyCooked } from '../utils/recentlyCookedStore';
 import './Recipes.css';
 
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
@@ -33,13 +34,22 @@ export default function Recipes() {
   const [cuisineOptions, setCuisineOptions] = useState([]);
   const [dietaryOptions, setDietaryOptions] = useState([]);
 
-  const [recipes,  setRecipes]  = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState('');
-  const [page,     setPage]     = useState(1);
-  const [hasMore,  setHasMore]  = useState(false);
+  const [recipes,       setRecipes]       = useState([]);
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
+  const [page,          setPage]          = useState(1);
+  const [hasMore,       setHasMore]       = useState(false);
+  const [recentlyCooked, setRecentlyCooked] = useState([]);
 
   const searchTimer = useRef(null);
+
+  // Load recently cooked from localStorage on mount + when page gains focus
+  useEffect(() => {
+    const load = () => setRecentlyCooked(getRecentlyCooked());
+    load();
+    window.addEventListener('focus', load);
+    return () => window.removeEventListener('focus', load);
+  }, []);
 
   // Load options + pre-fill from profile
   useEffect(() => {
@@ -189,6 +199,29 @@ export default function Recipes() {
 
   return (
     <div className="recipes-page">
+      {/* ── Recently Cooked strip ──────────────────────────────────── */}
+      {recentlyCooked.length > 0 && (
+        <div className="recently-cooked-strip">
+          <span className="rc-label">Recently cooked</span>
+          <div className="rc-scroll">
+            {recentlyCooked.map(r => (
+              <button
+                key={r.recipeId}
+                className="rc-chip"
+                onClick={() => navigate(`/recipes/${r.recipeId}`)}
+                title={r.title}
+              >
+                {r.imageUrl
+                  ? <img src={r.imageUrl} alt="" className="rc-chip-img" />
+                  : <span className="rc-chip-icon">🍽</span>
+                }
+                <span className="rc-chip-name">{r.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="recipes-header">
         <div className="recipes-title-sort-row">

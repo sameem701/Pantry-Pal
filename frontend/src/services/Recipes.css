@@ -6,6 +6,57 @@
   font-family: 'Segoe UI', sans-serif;
 }
 
+/* Recently Cooked strip */
+.recently-cooked-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.rc-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted, #999);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rc-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.rc-scroll::-webkit-scrollbar { display: none; }
+.rc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--border-default, #ddd);
+  border-radius: 20px;
+  background: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--text-body, #333);
+  transition: background 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+.rc-chip:hover { background: #f0f0f0; border-color: #bbb; }
+.rc-chip-img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.rc-chip-icon { font-size: 1rem; }
+.rc-chip-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
 /* Header */
 .recipes-header {
   margin-bottom: 24px;

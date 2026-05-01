@@ -435,6 +435,12 @@ BEGIN
         UPDATE pantry_items
         SET quantity = GREATEST(0, quantity - v_ing.needed)
         WHERE user_id = p_user_id AND ingredient_id = v_ing.ingredient_id;
+
+        -- Remove pantry row if quantity reached zero
+        DELETE FROM pantry_items
+        WHERE user_id = p_user_id
+          AND ingredient_id = v_ing.ingredient_id
+          AND quantity <= 0;
     END LOOP;
 
     RETURN json_build_object('success', true, 'message', 'Pantry updated after cooking');
@@ -834,7 +840,9 @@ BEGIN
         JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
         JOIN recipe_ingredients ri ON ri.recipe_id = r.recipe_id
         LEFT JOIN pantry_items pi
-            ON pi.ingredient_id = ri.ingredient_id AND pi.user_id = p_user_id
+            ON pi.ingredient_id = ri.ingredient_id
+           AND pi.user_id = p_user_id
+           AND pi.quantity > 0
         WHERE
             r.status = 'published'
             AND (p_difficulty IS NULL OR r.difficulty = p_difficulty)
@@ -1992,6 +2000,7 @@ $$ LANGUAGE plpgsql;
 
 
 -- ============================================================
+-- ============================================================
 --  SECTION 10: NUTRITION
 -- ============================================================
 
@@ -2082,10 +2091,98 @@ $$ LANGUAGE plpgsql;
 
 
 -- ============================================================
---  SECTION 11: DASHBOARD
+--  SECTION 10.3-10.4: NUTRITION LOG
 -- ============================================================
 
--- 11.1  User dashboard summary
+-- 10.3  Log a cooked recipe to the daily nutrition log
+CREATE OR REPLACE FUNCTION log_nutrition_entry(
+    p_user_id   INTEGER,
+    p_recipe_id INTEGER
+)
+RETURNS JSON AS $$
+DECLARE
+    v_n   recipe_nutrition%ROWTYPE;
+    v_log nutrition_log%ROWTYPE;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM app_users WHERE user_id = p_user_id) THEN
+        RETURN json_build_object('success', false, 'message', 'User not found');
+    END IF;
+
+    SELECT * INTO v_n FROM recipe_nutrition WHERE recipe_id = p_recipe_id;
+    IF NOT FOUND THEN
+        RETURN json_build_object('success', false, 'message', 'Nutrition info not available for this recipe');
+    END IF;
+
+    INSERT INTO nutrition_log(user_id, recipe_id, log_date, calories, protein_g, carbs_g, fat_g)
+    VALUES (p_user_id, p_recipe_id, CURRENT_DATE, v_n.calories, v_n.protein_g, v_n.carbs_g, v_n.fat_g)
+    RETURNING * INTO v_log;
+
+    RETURN json_build_object(
+        'success',   true,
+        'log_id',    v_log.log_id,
+        'log_date',  v_log.log_date,
+        'calories',  v_log.calories,
+        'protein_g', v_log.protein_g,
+        'carbs_g',   v_log.carbs_g,
+        'fat_g',     v_log.fat_g
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- 10.4  Get nutrition log for a specific date (or today)
+CREATE OR REPLACE FUNCTION get_daily_nutrition_log(
+    p_user_id INTEGER,
+    p_date    DATE DEFAULT CURRENT_DATE
+)
+RETURNS JSON AS $$
+DECLARE
+    v_entries JSON;
+    v_totals  RECORD;
+BEGIN
+    SELECT json_agg(json_build_object(
+        'log_id',    nl.log_id,
+        'recipe_id', nl.recipe_id,
+        'title',     r.title,
+        'image_url', r.image_url,
+        'logged_at', nl.logged_at,
+        'calories',  nl.calories,
+        'protein_g', nl.protein_g,
+        'carbs_g',   nl.carbs_g,
+        'fat_g',     nl.fat_g
+    ) ORDER BY nl.logged_at)
+    INTO v_entries
+    FROM nutrition_log nl
+    LEFT JOIN recipes r ON r.recipe_id = nl.recipe_id
+    WHERE nl.user_id = p_user_id AND nl.log_date = p_date;
+
+    SELECT
+        COALESCE(SUM(calories), 0)  AS total_calories,
+        COALESCE(SUM(protein_g), 0) AS total_protein,
+        COALESCE(SUM(carbs_g), 0)   AS total_carbs,
+        COALESCE(SUM(fat_g), 0)     AS total_fat
+    INTO v_totals
+    FROM nutrition_log
+    WHERE user_id = p_user_id AND log_date = p_date;
+
+    RETURN json_build_object(
+        'success',  true,
+        'date',     p_date,
+        'entries',  COALESCE(v_entries, '[]'::JSON),
+        'totals', json_build_object(
+            'calories',  v_totals.total_calories,
+            'protein_g', v_totals.total_protein,
+            'carbs_g',   v_totals.total_carbs,
+            'fat_g',     v_totals.total_fat
+        )
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================
+--  SECTION 11: DASHBOARD
+-- ============================================================
 --       FIX: draft_count added; top recipes filtered to published only
 CREATE OR REPLACE FUNCTION get_user_dashboard(p_user_id INTEGER)
 RETURNS JSON AS $$

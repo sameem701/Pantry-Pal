@@ -5,7 +5,7 @@ import { apiRequest } from './client';
 export function searchByPantry({ userId, difficulty, cuisineId, page = 1, limit = 12 } = {}) {
     const params = new URLSearchParams({ page, limit });
     if (difficulty) params.set('difficulty', difficulty);
-    if (cuisineId)  params.set('cuisine_id', cuisineId);
+    if (cuisineId) params.set('cuisine_id', cuisineId);
     return apiRequest(`/recipes/search-by-pantry/${userId}?${params}`);
 }
 

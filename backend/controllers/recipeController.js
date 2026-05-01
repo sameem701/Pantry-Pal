@@ -838,6 +838,42 @@ const remove = async (req, res) => {
   }
 };
 
+// POST /api/nutrition/log  { user_id, recipe_id }
+const logNutritionHandler = async (req, res) => {
+  try {
+    const { user_id, recipe_id } = req.body;
+    if (!user_id || !recipe_id) {
+      return res.status(400).json({ success: false, message: 'user_id and recipe_id are required' });
+    }
+    const { rows } = await pool.query(
+      'SELECT log_nutrition_entry($1, $2) AS result',
+      [user_id, recipe_id]
+    );
+    const result = rows[0].result;
+    if (!result.success) return res.status(400).json(result);
+    return res.status(201).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// GET /api/nutrition/log/:user_id?date=YYYY-MM-DD
+const getDailyNutritionLogHandler = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const date = req.query.date || null;
+    const { rows } = await pool.query(
+      'SELECT get_daily_nutrition_log($1, $2) AS result',
+      [user_id, date]
+    );
+    const result = rows[0].result;
+    if (!result.success) return res.status(400).json(result);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   getAllRecipes,
   getRecipeById,
@@ -875,5 +911,7 @@ module.exports = {
   startCookingSessionHandler,
   updateCookingStepHandler,
   completeCookingSessionHandler,
-  getCookingSessionHandler
+  getCookingSessionHandler,
+  logNutritionHandler,
+  getDailyNutritionLogHandler
 };

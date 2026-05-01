@@ -10,7 +10,7 @@ const TYPE_ACCENT = {
   info:    '#5a4fcf',
 };
 
-function Toast({ id, message, type, onRemove }) {
+function Toast({ id, message, type, action, onRemove }) {
   const accent = TYPE_ACCENT[type] || TYPE_ACCENT.success;
 
   useEffect(() => {
@@ -25,6 +25,12 @@ function Toast({ id, message, type, onRemove }) {
         <span className="toast-icon">{TYPE_ICON[type] || '✓'}</span>
         <span className="toast-message">{message}</span>
       </div>
+      {action && (
+        <button
+          className="toast-action"
+          onClick={() => { action.onClick(); onRemove(id); }}
+        >{action.label}</button>
+      )}
       <button className="toast-close" onClick={() => onRemove(id)}>×</button>
       <div className="toast-progress" />
     </div>
@@ -35,9 +41,9 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const idRef = useRef(0);
 
-  const addToast = useCallback((message, type = 'success') => {
+  const addToast = useCallback((message, type = 'success', action = null) => {
     const id = ++idRef.current;
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message, type, action }]);
     return id;
   }, []);
 

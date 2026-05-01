@@ -30,6 +30,7 @@ DROP TABLE IF EXISTS recipe_cuisines         CASCADE;
 DROP TABLE IF EXISTS user_cuisine_preference CASCADE;
 DROP TABLE IF EXISTS cuisines                CASCADE;
 DROP TABLE IF EXISTS cooking_sessions        CASCADE;
+DROP TABLE IF EXISTS nutrition_log           CASCADE;
 DROP TABLE IF EXISTS recipe_nutrition        CASCADE;
 DROP TABLE IF EXISTS recipe_instructions     CASCADE;
 DROP TABLE IF EXISTS recipe_ingredients      CASCADE;
@@ -168,6 +169,20 @@ CREATE TABLE recipe_nutrition (
     protein_g DECIMAL(5,2),
     carbs_g   DECIMAL(5,2),
     fat_g     DECIMAL(5,2)
+);
+
+-- Daily nutrition log: records what a user actually cooked/ate each day
+CREATE TABLE nutrition_log (
+    log_id     SERIAL    PRIMARY KEY,
+    user_id    INTEGER   NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
+    recipe_id  INTEGER   REFERENCES recipes(recipe_id) ON DELETE SET NULL,
+    logged_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    log_date   DATE      NOT NULL DEFAULT CURRENT_DATE,
+    calories   INTEGER,
+    protein_g  DECIMAL(5,2),
+    carbs_g    DECIMAL(5,2),
+    fat_g      DECIMAL(5,2),
+    note       VARCHAR(255)
 );
 
 CREATE TABLE recipe_instructions (

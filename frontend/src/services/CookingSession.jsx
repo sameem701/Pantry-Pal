@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -9,7 +9,9 @@ import {
   completeCookingSession,
   getRecipeDetails,
 } from '../api/RecipeApi';
+import { logNutritionEntry } from '../api/NutritionApi';
 import { saveShoppingListLocally } from '../utils/shoppingListStore';
+import { saveRecentlyCookedLocally } from '../utils/recentlyCookedStore';
 import './CookingSession.css';
 
 export default function CookingSession() {
@@ -31,6 +33,14 @@ export default function CookingSession() {
   // Completion modal
   const [showCompletionModal, setShowCompletionModal] = useState(false);
 
+  // Post-cook nutrition log modal
+  const [showNutritionModal,  setShowNutritionModal]  = useState(false);
+  const [nutritionData,       setNutritionData]       = useState(null);
+  const [loggingNutrition,    setLoggingNutrition]    = useState(false);
+
+  // Cache recipe nutrition from initial details fetch
+  const recipeNutritionRef = useRef(null);
+
   // Start or resume session on mount
   useEffect(() => {
     let cancelled = false;
@@ -39,11 +49,14 @@ export default function CookingSession() {
       setLoading(true);
       setError('');
       try {
-        // 1. Check for missing pantry ingredients
+        // 1. Check for missing pantry ingredients + grab nutrition
         const recipeData = await getRecipeDetails(recipeId, userId);
         const recipeObj  = recipeData?.recipe ?? recipeData?.data ?? recipeData;
         const ingredients = Array.isArray(recipeObj?.ingredients) ? recipeObj.ingredients : [];
         const missing = ingredients.filter(i => i.in_pantry === false || i.in_pantry === 0);
+
+        // Cache nutrition for the post-cook modal
+        if (recipeObj?.nutrition) recipeNutritionRef.current = recipeObj.nutrition;
 
         if (missing.length > 0 && !cancelled) {
           setMissingIngredients(missing);
@@ -106,8 +119,17 @@ export default function CookingSession() {
     setCompleting(true);
     try {
       await completeCookingSession(session.session_id, userId);
+      saveRecentlyCookedLocally({
+        recipeId:    recipeId,
+        title:       session.recipe_title || '',
+        imageUrl:    session.image_url    || '',
+        cookingTime: session.cooking_time_min ?? null,
+        difficulty:  session.difficulty   || '',
+      });
       addToast('Pantry updated!', 'success');
-      navigate(`/recipes/${recipeId}?completed=1`);
+      // Show nutrition modal
+      setNutritionData(recipeNutritionRef.current);
+      setShowNutritionModal(true);
     } catch (err) {
       addToast(err.message || 'Failed to complete session', 'error');
     } finally {
@@ -118,6 +140,34 @@ export default function CookingSession() {
   // "Cancel" on completion modal — go back without updating pantry
   function handleCancelComplete() {
     setShowCompletionModal(false);
+    saveRecentlyCookedLocally({
+      recipeId:    recipeId,
+      title:       session?.recipe_title || '',
+      imageUrl:    session?.image_url    || '',
+      cookingTime: session?.cooking_time_min ?? null,
+      difficulty:  session?.difficulty   || '',
+    });
+    // Show nutrition modal anyway (they still cooked it)
+    setNutritionData(recipeNutritionRef.current);
+    setShowNutritionModal(true);
+  }
+
+  // Nutrition modal — "Log It"
+  async function handleLogNutrition() {
+    setLoggingNutrition(true);
+    try {
+      await logNutritionEntry(userId, Number(recipeId));
+      addToast('Nutrition logged for today!', 'success');
+    } catch {
+      addToast('Could not log nutrition', 'error');
+    } finally {
+      setLoggingNutrition(false);
+      navigate(`/recipes/${recipeId}?completed=1`);
+    }
+  }
+
+  // Nutrition modal — "Skip"
+  function handleSkipNutrition() {
     navigate(`/recipes/${recipeId}?completed=1`);
   }
 
@@ -274,6 +324,53 @@ export default function CookingSession() {
               <button className="btn-ghost-sm" onClick={handleCancelComplete}>Cancel</button>
               <button className="cook-btn cook-btn-complete" onClick={handleConfirmComplete} disabled={completing}>
                 {completing ? 'Updating…' : 'Yes, Update Pantry'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-cook nutrition log modal */}
+      {showNutritionModal && (
+        <div className="modal-overlay">
+          <div className="cook-nutrition-modal">
+            <div className="cook-nutrition-icon">🥗</div>
+            <h2 className="cook-nutrition-title">Log to Today's Nutrition?</h2>
+            <p className="cook-nutrition-sub">
+              Track <strong>{session?.recipe_title}</strong> in your daily nutrition log.
+            </p>
+
+            {nutritionData ? (
+              <div className="cook-nutrition-macros">
+                <div className="cook-macro-chip">
+                  <span className="cook-macro-value">{nutritionData.calories ?? '—'}</span>
+                  <span className="cook-macro-label">kcal</span>
+                </div>
+                <div className="cook-macro-chip">
+                  <span className="cook-macro-value">{nutritionData.protein_g != null ? `${nutritionData.protein_g}g` : '—'}</span>
+                  <span className="cook-macro-label">Protein</span>
+                </div>
+                <div className="cook-macro-chip">
+                  <span className="cook-macro-value">{nutritionData.carbs_g != null ? `${nutritionData.carbs_g}g` : '—'}</span>
+                  <span className="cook-macro-label">Carbs</span>
+                </div>
+                <div className="cook-macro-chip">
+                  <span className="cook-macro-value">{nutritionData.fat_g != null ? `${nutritionData.fat_g}g` : '—'}</span>
+                  <span className="cook-macro-label">Fat</span>
+                </div>
+              </div>
+            ) : (
+              <p className="cook-nutrition-no-data">No nutrition info available for this recipe.</p>
+            )}
+
+            <div className="cook-modal-actions">
+              <button className="btn-ghost-sm" onClick={handleSkipNutrition}>Skip</button>
+              <button
+                className="cook-btn cook-btn-complete"
+                onClick={handleLogNutrition}
+                disabled={loggingNutrition || !nutritionData}
+              >
+                {loggingNutrition ? 'Logging…' : 'Log It'}
               </button>
             </div>
           </div>
