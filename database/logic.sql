@@ -813,6 +813,7 @@ $$ LANGUAGE plpgsql;
 --      FIX: only searches 'published' recipes
 --      FIX: cuisine filter uses INNER JOIN when filter is active to avoid
 --           duplicate rows from LEFT JOIN + ANY() combination
+DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'search_recipes_by_pantry' LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP; END $$;
 CREATE OR REPLACE FUNCTION search_recipes_by_pantry(
     p_user_id     INTEGER,
     p_cuisine_ids INTEGER[]   DEFAULT NULL,
@@ -882,6 +883,7 @@ $$ LANGUAGE plpgsql;
 -- 4.2  Browse / search all community recipes with filters
 --      FIX: only returns 'published' recipes by default
 --      FIX: cuisine filter uses EXISTS to avoid duplicate rows
+DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'browse_recipes' LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP; END $$;
 CREATE OR REPLACE FUNCTION browse_recipes(
     p_user_id     INTEGER     DEFAULT NULL,
     p_search_term VARCHAR(255) DEFAULT NULL,
@@ -1244,121 +1246,87 @@ $$ LANGUAGE plpgsql;
 
 
 -- ============================================================
---  SECTION 7: MEAL PLANNING
+--  SECTION 7: MEAL PLANNING  (per-day model)
 -- ============================================================
 
--- 7.0  Create a new weekly plan (strict create)
-CREATE OR REPLACE FUNCTION create_meal_plan(
-    p_user_id    INTEGER,
-    p_week_start DATE,
-    p_name       VARCHAR(100) DEFAULT NULL
+-- 7.1  Get all meals for a date range
+CREATE OR REPLACE FUNCTION get_meals_for_range(
+    p_user_id   INTEGER,
+    p_start     DATE,
+    p_end       DATE
 )
 RETURNS JSON AS $$
-DECLARE v_plan_id INTEGER;
+DECLARE v_meals JSON;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM app_users WHERE user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'User not found');
-    END IF;
+    SELECT json_agg(json_build_object(
+        'date',         dm.date,
+        'meal_type',    dm.meal_type,
+        'recipe_id',    r.recipe_id,
+        'recipe_title', r.title,
+        'is_cooked',    dm.is_cooked,
+        'calories',     COALESCE(rn.calories,  0),
+        'protein_g',    COALESCE(rn.protein_g, 0),
+        'carbs_g',      COALESCE(rn.carbs_g,   0),
+        'fat_g',        COALESCE(rn.fat_g,     0)
+    ) ORDER BY dm.date, CASE dm.meal_type WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END)
+    INTO v_meals
+    FROM daily_meals dm
+    JOIN recipes r ON r.recipe_id = dm.recipe_id
+    LEFT JOIN recipe_nutrition rn ON rn.recipe_id = r.recipe_id
+    WHERE dm.user_id = p_user_id
+      AND dm.date BETWEEN p_start AND p_end;
 
-    IF EXISTS (
-        SELECT 1 FROM meal_plans
-        WHERE user_id = p_user_id AND week_start = p_week_start
-    ) THEN
-        RETURN json_build_object('success', false, 'message', 'Meal plan already exists for this week');
-    END IF;
-
-    INSERT INTO meal_plans (user_id, week_start, week_end, name)
-    VALUES (
-        p_user_id,
-        p_week_start,
-        (p_week_start + INTERVAL '6 days')::DATE,
-        p_name
-    )
-    RETURNING plan_id INTO v_plan_id;
-
-    RETURN json_build_object('success', true, 'plan_id', v_plan_id);
+    RETURN json_build_object(
+        'success', true,
+        'meals',   COALESCE(v_meals, '[]'::JSON)
+    );
 END;
 $$ LANGUAGE plpgsql;
 
--- 7.1  Get existing plan for week or create a new one
-CREATE OR REPLACE FUNCTION get_or_create_meal_plan(
-    p_user_id    INTEGER,
-    p_week_start DATE,
-    p_name       VARCHAR(100) DEFAULT NULL
-)
-RETURNS JSON AS $$
-DECLARE v_plan_id INTEGER;
-BEGIN
-    SELECT plan_id INTO v_plan_id
-    FROM meal_plans
-    WHERE user_id = p_user_id AND week_start = p_week_start;
 
-    IF NOT FOUND THEN
-        INSERT INTO meal_plans (user_id, week_start, week_end, name)
-        VALUES (
-            p_user_id, 
-            p_week_start, 
-            (p_week_start + INTERVAL '6 days')::DATE,  -- Explicit cast
-            p_name
-        )
-        RETURNING plan_id INTO v_plan_id;
-    END IF;
-
-    RETURN json_build_object('success', true, 'plan_id', v_plan_id);
-END;
-$$ LANGUAGE plpgsql;
-
--- 7.2  Add (or swap) a recipe into a meal slot
-CREATE OR REPLACE FUNCTION add_meal_to_plan(
-    p_plan_id     INTEGER,
-    p_recipe_id   INTEGER,
-    p_day_of_week VARCHAR(10),
-    p_meal_type   VARCHAR(10)
+-- 7.2  Add or replace a meal in a specific date+slot
+CREATE OR REPLACE FUNCTION upsert_daily_meal(
+    p_user_id   INTEGER,
+    p_date      DATE,
+    p_meal_type VARCHAR(10),
+    p_recipe_id INTEGER
 )
 RETURNS JSON AS $$
 BEGIN
-    IF p_day_of_week NOT IN ('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday') THEN
-        RETURN json_build_object('success', false, 'message', 'Invalid day of week');
-    END IF;
-
     IF p_meal_type NOT IN ('breakfast','lunch','dinner') THEN
         RETURN json_build_object('success', false, 'message', 'Invalid meal type');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Meal plan not found');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM recipes WHERE recipe_id = p_recipe_id AND status = 'published') THEN
         RETURN json_build_object('success', false, 'message', 'Recipe not found');
     END IF;
 
-    INSERT INTO meal_plan_recipes (plan_id, recipe_id, day_of_week, meal_type)
-    VALUES (p_plan_id, p_recipe_id, p_day_of_week, p_meal_type)
-    ON CONFLICT (plan_id, day_of_week, meal_type) DO UPDATE
+    INSERT INTO daily_meals (user_id, date, meal_type, recipe_id)
+    VALUES (p_user_id, p_date, p_meal_type, p_recipe_id)
+    ON CONFLICT (user_id, date, meal_type) DO UPDATE
         SET recipe_id = EXCLUDED.recipe_id,
             is_cooked = FALSE;
 
-    RETURN json_build_object('success', true, 'message', 'Meal added to plan');
+    RETURN json_build_object('success', true, 'message', 'Meal saved');
 END;
 $$ LANGUAGE plpgsql;
 
 
--- 7.3  Remove a meal from a specific slot
-CREATE OR REPLACE FUNCTION remove_meal_from_plan(
-    p_plan_id     INTEGER,
-    p_day_of_week VARCHAR(10),
-    p_meal_type   VARCHAR(10)
+-- 7.3  Remove a single meal slot
+CREATE OR REPLACE FUNCTION remove_daily_meal(
+    p_user_id   INTEGER,
+    p_date      DATE,
+    p_meal_type VARCHAR(10)
 )
 RETURNS JSON AS $$
 BEGIN
-    DELETE FROM meal_plan_recipes
-    WHERE plan_id = p_plan_id
-      AND day_of_week = p_day_of_week
-      AND meal_type   = p_meal_type;
+    DELETE FROM daily_meals
+    WHERE user_id   = p_user_id
+      AND date      = p_date
+      AND meal_type = p_meal_type;
 
     IF NOT FOUND THEN
-        RETURN json_build_object('success', false, 'message', 'Meal slot not found');
+        RETURN json_build_object('success', false, 'message', 'Slot not found');
     END IF;
 
     RETURN json_build_object('success', true, 'message', 'Meal removed');
@@ -1366,102 +1334,45 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 7.4  Clear all meals from a plan (ownership checked)
-CREATE OR REPLACE FUNCTION clear_meal_plan(p_plan_id INTEGER, p_user_id INTEGER)
+-- 7.4  Clear all meal slots for a specific date
+CREATE OR REPLACE FUNCTION clear_meals_for_date(
+    p_user_id INTEGER,
+    p_date    DATE
+)
 RETURNS JSON AS $$
+DECLARE v_deleted INTEGER;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
-    END IF;
+    DELETE FROM daily_meals
+    WHERE user_id = p_user_id
+      AND date    = p_date;
 
-    DELETE FROM meal_plan_recipes WHERE plan_id = p_plan_id;
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
-    RETURN json_build_object('success', true, 'message', 'Meal plan cleared');
+    RETURN json_build_object('success', true, 'deleted', v_deleted);
 END;
 $$ LANGUAGE plpgsql;
 
 
--- 7.5  Get full weekly meal plan (ordered Sun→Sat, breakfast→dinner)
-CREATE OR REPLACE FUNCTION get_meal_plan(p_plan_id INTEGER, p_user_id INTEGER)
-RETURNS JSON AS $$
-DECLARE
-    v_plan  RECORD;
-    v_meals JSON;
-BEGIN
-    SELECT * INTO v_plan
-    FROM meal_plans
-    WHERE plan_id = p_plan_id AND user_id = p_user_id;
-
-    IF NOT FOUND THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
-    END IF;
-
-    SELECT json_agg(json_build_object(
-        'day_of_week',  mpr.day_of_week,
-        'meal_type',    mpr.meal_type,
-        'is_cooked',    mpr.is_cooked,
-        'recipe_id',    r.recipe_id,
-        'recipe_title', r.title,
-        'difficulty',   r.difficulty,
-        'cooking_time', r.cooking_time_min,
-        'image_url',    r.image_url,
-        'calories',     COALESCE(rn.calories, 0),
-        'protein_g',    COALESCE(rn.protein_g, 0),
-        'carbs_g',      COALESCE(rn.carbs_g, 0),
-        'fat_g',        COALESCE(rn.fat_g, 0)
-    ) ORDER BY
-        CASE mpr.day_of_week
-            WHEN 'Sunday'    THEN 0 WHEN 'Monday'   THEN 1 WHEN 'Tuesday'  THEN 2
-            WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4 WHEN 'Friday'   THEN 5
-            WHEN 'Saturday'  THEN 6
-        END,
-        CASE mpr.meal_type
-            WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'dinner' THEN 2
-        END
-    )
-    INTO v_meals
-    FROM meal_plan_recipes mpr
-    JOIN recipes r ON r.recipe_id = mpr.recipe_id
-    LEFT JOIN recipe_nutrition rn ON rn.recipe_id = r.recipe_id
-    WHERE mpr.plan_id = p_plan_id;
-
-    RETURN json_build_object(
-        'success',    true,
-        'plan_id',    v_plan.plan_id,
-        'week_start', v_plan.week_start,
-        'week_end',   v_plan.week_end,
-        'name',       v_plan.name,
-        'meals',      COALESCE(v_meals, '[]'::JSON)
-    );
-END;
-$$ LANGUAGE plpgsql;
-
-
--- 7.6  Mark a planned meal as cooked (deducts pantry)
-CREATE OR REPLACE FUNCTION mark_meal_cooked(
-    p_plan_id     INTEGER,
-    p_user_id     INTEGER,
-    p_day_of_week VARCHAR(10),
-    p_meal_type   VARCHAR(10)
+-- 7.5  Mark a meal as cooked (deducts pantry)
+CREATE OR REPLACE FUNCTION mark_daily_meal_cooked(
+    p_user_id   INTEGER,
+    p_date      DATE,
+    p_meal_type VARCHAR(10)
 )
 RETURNS JSON AS $$
 DECLARE v_recipe_id INTEGER;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
-    END IF;
-
-    UPDATE meal_plan_recipes
+    UPDATE daily_meals
     SET is_cooked = TRUE
-    WHERE plan_id     = p_plan_id
-      AND day_of_week = p_day_of_week
-      AND meal_type   = p_meal_type
-      AND is_cooked   = FALSE          -- idempotent guard
+    WHERE user_id   = p_user_id
+      AND date      = p_date
+      AND meal_type = p_meal_type
+      AND is_cooked = FALSE
     RETURNING recipe_id INTO v_recipe_id;
 
     IF NOT FOUND THEN
         RETURN json_build_object('success', false,
-            'message', 'Meal slot not found or already marked as cooked');
+            'message', 'Slot not found or already marked as cooked');
     END IF;
 
     PERFORM deduct_pantry_after_cooking(p_user_id, v_recipe_id);
@@ -1471,158 +1382,91 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 7.7  Smart meal suggestions for the week
---      Returns THREE weekly options (up to 7 recipes each by default):
---        - published recipes only
---        - excludes recipes already in the selected plan
---        - respects dietary restrictions
---        - avoids cuisine repetition by capping picks per cuisine
-CREATE OR REPLACE FUNCTION suggest_meals_for_week(
-    p_user_id     INTEGER,
-    p_plan_id     INTEGER,
-    p_days        INTEGER DEFAULT 7
+-- 7.6  Smart meal suggestions for a date range
+--      Returns THREE option sets of up to p_days recipes each.
+--      Excludes recipes already planned in the given range.
+--      Respects dietary restrictions and limits cuisine repetition.
+CREATE OR REPLACE FUNCTION suggest_meals_for_dates(
+    p_user_id   INTEGER,
+    p_start     DATE,
+    p_days      INTEGER DEFAULT 7
 )
 RETURNS JSON AS $$
 DECLARE v_result JSON;
 BEGIN
-    IF p_days IS NULL OR p_days < 1 THEN
-        p_days := 7;
-    END IF;
+    IF p_days IS NULL OR p_days < 1 THEN p_days := 7; END IF;
 
-    WITH candidate_recipes AS (
+    WITH already_planned AS (
+        SELECT DISTINCT recipe_id
+        FROM daily_meals
+        WHERE user_id = p_user_id
+          AND date BETWEEN p_start AND (p_start + (p_days - 1))
+    ),
+    candidate_recipes AS (
         SELECT
-            r.recipe_id,
-            r.title,
-            r.difficulty,
-            r.cooking_time_min,
-            r.image_url,
+            r.recipe_id, r.title, r.difficulty, r.cooking_time_min, r.image_url,
             rs.average_rating,
-            COUNT(ri.ingredient_id)                              AS total_ingredients,
-            COUNT(pi.ingredient_id)                              AS matched,
-            COUNT(ri.ingredient_id) - COUNT(pi.ingredient_id)   AS missing,
-            COALESCE(
-                (
-                    SELECT c.name
-                    FROM recipe_cuisines rc
-                    JOIN cuisines c ON c.cuisine_id = rc.cuisine_id
-                    WHERE rc.recipe_id = r.recipe_id
-                    ORDER BY c.name
-                    LIMIT 1
-                ),
-                'Uncategorized'
-            ) AS primary_cuisine
+            COUNT(ri.ingredient_id)                            AS total_ingredients,
+            COUNT(pi.ingredient_id)                            AS matched,
+            COUNT(ri.ingredient_id) - COUNT(pi.ingredient_id) AS missing,
+            COALESCE((
+                SELECT c.name FROM recipe_cuisines rc
+                JOIN cuisines c ON c.cuisine_id = rc.cuisine_id
+                WHERE rc.recipe_id = r.recipe_id ORDER BY c.name LIMIT 1
+            ), 'Uncategorized') AS primary_cuisine
         FROM recipes r
-        JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
+        JOIN recipe_stats rs       ON rs.recipe_id = r.recipe_id
         JOIN recipe_ingredients ri ON ri.recipe_id = r.recipe_id
-        LEFT JOIN pantry_items pi
-            ON pi.ingredient_id = ri.ingredient_id AND pi.user_id = p_user_id
-        WHERE
-            r.status = 'published'
-            -- Not already planned this week
-            AND r.recipe_id NOT IN (
-                SELECT recipe_id FROM meal_plan_recipes WHERE plan_id = p_plan_id
-            )
-            -- Respect dietary restrictions
-            AND NOT EXISTS (
-                SELECT 1
-                FROM recipe_ingredients ri2
-                JOIN preference_food_group pfg
-                    ON pfg.ingredient_id = ri2.ingredient_id AND pfg.allowed = 0
-                JOIN user_preference up
-                    ON up.preference_id = pfg.preference_id AND up.user_id = p_user_id
-                WHERE ri2.recipe_id = r.recipe_id
-            )
-        GROUP BY r.recipe_id, r.title, r.difficulty,
-                 r.cooking_time_min, r.image_url, rs.average_rating
+        LEFT JOIN pantry_items pi  ON pi.ingredient_id = ri.ingredient_id AND pi.user_id = p_user_id
+        WHERE r.status = 'published'
+          AND r.recipe_id NOT IN (SELECT recipe_id FROM already_planned)
+          AND NOT EXISTS (
+              SELECT 1 FROM recipe_ingredients ri2
+              JOIN preference_food_group pfg ON pfg.ingredient_id = ri2.ingredient_id AND pfg.allowed = 0
+              JOIN user_preference up ON up.preference_id = pfg.preference_id AND up.user_id = p_user_id
+              WHERE ri2.recipe_id = r.recipe_id
+          )
+        GROUP BY r.recipe_id, r.title, r.difficulty, r.cooking_time_min, r.image_url, rs.average_rating
     ),
-    option_seed AS (
-        SELECT generate_series(1, 3) AS option_idx
-    ),
+    option_seed AS (SELECT generate_series(1, 3) AS option_idx),
     ranked AS (
-        SELECT
-            os.option_idx,
-            cr.*,
+        SELECT os.option_idx, cr.*,
             ROW_NUMBER() OVER (
                 PARTITION BY os.option_idx, cr.primary_cuisine
-                ORDER BY
-                    cr.missing ASC,
-                    cr.average_rating DESC,
-                    md5(cr.recipe_id::TEXT || '-' || os.option_idx::TEXT)
+                ORDER BY cr.missing ASC, cr.average_rating DESC,
+                         md5(cr.recipe_id::TEXT || '-' || os.option_idx::TEXT)
             ) AS cuisine_rank
-        FROM candidate_recipes cr
-        CROSS JOIN option_seed os
+        FROM candidate_recipes cr CROSS JOIN option_seed os
     ),
     picked AS (
-        SELECT
-            option_idx,
-            recipe_id,
-            title,
-            difficulty,
-            cooking_time_min,
-            image_url,
-            average_rating,
-            total_ingredients,
-            matched,
-            missing,
-            primary_cuisine,
-            CASE
-                WHEN total_ingredients = 0 THEN 0
-                ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1)
-            END AS match_percent,
-            ROW_NUMBER() OVER (
-                PARTITION BY option_idx
-                ORDER BY missing ASC, average_rating DESC, cuisine_rank ASC, recipe_id
-            ) AS option_rank
-        FROM ranked
-        WHERE cuisine_rank <= 2
+        SELECT option_idx, recipe_id, title, difficulty, cooking_time_min, image_url,
+               average_rating, total_ingredients, matched, missing, primary_cuisine,
+               CASE WHEN total_ingredients = 0 THEN 0
+                    ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1) END AS match_percent,
+               ROW_NUMBER() OVER (
+                   PARTITION BY option_idx
+                   ORDER BY missing ASC, average_rating DESC, cuisine_rank ASC, recipe_id
+               ) AS option_rank
+        FROM ranked WHERE cuisine_rank <= 2
     ),
-    final_pick AS (
-        SELECT *
-        FROM picked
-        WHERE option_rank <= p_days
-    ),
+    final_pick AS (SELECT * FROM picked WHERE option_rank <= p_days),
     option_lists AS (
-        SELECT
-            os.option_idx,
-            COALESCE(
-                json_agg(
-                    json_build_object(
-                        'recipe_id', fp.recipe_id,
-                        'title', fp.title,
-                        'difficulty', fp.difficulty,
-                        'cooking_time_min', fp.cooking_time_min,
-                        'image_url', fp.image_url,
-                        'average_rating', fp.average_rating,
-                        'total_ingredients', fp.total_ingredients,
-                        'matched', fp.matched,
-                        'missing', fp.missing,
-                        'primary_cuisine', fp.primary_cuisine,
-                        'match_percent', fp.match_percent
-                    )
-                    ORDER BY fp.option_rank
-                ) FILTER (WHERE fp.recipe_id IS NOT NULL),
-                '[]'::JSON
-            ) AS meals
-        FROM option_seed os
-        LEFT JOIN final_pick fp ON fp.option_idx = os.option_idx
+        SELECT os.option_idx,
+            COALESCE(json_agg(json_build_object(
+                'recipe_id', fp.recipe_id, 'title', fp.title, 'difficulty', fp.difficulty,
+                'cooking_time_min', fp.cooking_time_min, 'image_url', fp.image_url,
+                'average_rating', fp.average_rating, 'total_ingredients', fp.total_ingredients,
+                'matched', fp.matched, 'missing', fp.missing,
+                'primary_cuisine', fp.primary_cuisine, 'match_percent', fp.match_percent
+            ) ORDER BY fp.option_rank) FILTER (WHERE fp.recipe_id IS NOT NULL), '[]'::JSON) AS meals
+        FROM option_seed os LEFT JOIN final_pick fp ON fp.option_idx = os.option_idx
         GROUP BY os.option_idx
     )
-    SELECT json_agg(
-        json_build_object(
-            'option_number', option_idx,
-            'meals', meals
-        )
-        ORDER BY option_idx
-    )
-    INTO v_result
-    FROM option_lists;
+    SELECT json_agg(json_build_object('option_number', option_idx, 'meals', meals) ORDER BY option_idx)
+    INTO v_result FROM option_lists;
 
-    RETURN json_build_object(
-        'success', true,
-        'mode', 'three_week_options',
-        'days_requested', p_days,
-        'data', COALESCE(v_result, '[]'::JSON)
-    );
+    RETURN json_build_object('success', true, 'mode', 'three_options',
+        'days_requested', p_days, 'data', COALESCE(v_result, '[]'::JSON));
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1631,181 +1475,105 @@ $$ LANGUAGE plpgsql;
 --  SECTION 8: SHOPPING LIST
 -- ============================================================
 
--- 8.1  Get missing ingredients with unit normalization
---      Algorithm:
---        1. Sum all recipe quantities for the plan, converting to base unit
---           (g for weight, ml for volume, piece for count)
---        2. Compare against pantry amount (also converted to base unit)
---        3. Only return ingredients where deficit > threshold:
---             weight  >= 5 g
---             volume  >= 5 ml
---             count   >= 1 piece
---        4. Display quantity:
---             - single unit used across all recipes → convert deficit back to that unit
---             - mixed units                         → show in base unit (g / ml / piece)
-CREATE OR REPLACE FUNCTION get_missing_ingredients(
-    p_plan_id INTEGER,
-    p_user_id INTEGER
+-- 8.1  Get missing ingredients for a date range (uncooked meals only)
+CREATE OR REPLACE FUNCTION get_missing_ingredients_for_range(
+    p_user_id INTEGER,
+    p_start   DATE,
+    p_end     DATE
 )
 RETURNS JSON AS $$
 DECLARE v_result JSON;
 BEGIN
     SELECT json_agg(json_build_object(
-        'ingredient_name', ingredient_name,
-        'category',        category,
-        'raw_breakdown',   quantity_display,
-        'pantry_quantity', have_qty_raw,
-        'pantry_unit',     pantry_unit_raw,
-        'pantry_display',  pantry_display,
-        'occurrences',     occurrences
+        'ingredient_name', ingredient_name, 'category', category,
+        'raw_breakdown', quantity_display, 'pantry_quantity', have_qty_raw,
+        'pantry_unit', pantry_unit_raw, 'pantry_display', pantry_display,
+        'occurrences', occurrences
     ) ORDER BY category, ingredient_name)
     INTO v_result
     FROM (
-        -- Step 1: total needed per ingredient, normalised to base unit
         WITH needed AS (
-            SELECT
-                i.ingredient_id,
-                i.ingredient_name,
-                i.category,
-                COUNT(*)                                                AS occurrences,
-                COALESCE(MAX(uc.base_unit), 'piece')                    AS base_unit,
-                SUM(ri.quantity * COALESCE(uc.factor, 1))               AS needed_base,
-                COUNT(DISTINCT ri.unit)                                 AS distinct_units,
-                MAX(ri.unit)                                            AS original_unit,
-                MAX(uc.factor)                                          AS original_factor
-            FROM meal_plan_recipes mpr
-            JOIN recipe_ingredients ri ON ri.recipe_id = mpr.recipe_id
-            JOIN ingredients        i  ON i.ingredient_id = ri.ingredient_id
-            LEFT JOIN unit_conversions uc
-                   ON LOWER(TRIM(COALESCE(ri.unit, ''))) = uc.from_unit
-            WHERE mpr.plan_id = p_plan_id
-              AND mpr.is_cooked = FALSE
+            SELECT i.ingredient_id, i.ingredient_name, i.category,
+                COUNT(*) AS occurrences,
+                COALESCE(MAX(uc.base_unit), 'piece') AS base_unit,
+                SUM(ri.quantity * COALESCE(uc.factor, 1)) AS needed_base,
+                COUNT(DISTINCT ri.unit) AS distinct_units,
+                MAX(ri.unit) AS original_unit,
+                MAX(uc.factor) AS original_factor
+            FROM daily_meals dm
+            JOIN recipe_ingredients ri ON ri.recipe_id = dm.recipe_id
+            JOIN ingredients i ON i.ingredient_id = ri.ingredient_id
+            LEFT JOIN unit_conversions uc ON LOWER(TRIM(COALESCE(ri.unit, ''))) = uc.from_unit
+            WHERE dm.user_id = p_user_id
+              AND dm.date BETWEEN p_start AND p_end
+              AND dm.is_cooked = FALSE
               AND ri.quantity > 0
             GROUP BY i.ingredient_id, i.ingredient_name, i.category
         ),
-        -- Step 2: pantry stock in base unit (same base_unit match required)
         have AS (
-            SELECT
-                pi.ingredient_id,
-                COALESCE(uc.base_unit, 'piece')                         AS base_unit,
-                pi.quantity * COALESCE(uc.factor, 1)                    AS have_base,
-                pi.quantity                                             AS qty_raw,
-                COALESCE(pi.unit, '')                                   AS unit_raw,
-                CASE
-                    WHEN COALESCE(pi.quantity, 0) = 0     THEN '0'
-                    WHEN COALESCE(pi.unit, '')  = ''      THEN TRIM(to_char(pi.quantity, 'FM999999990.##'))
-                    ELSE TRIM(to_char(pi.quantity, 'FM999999990.##')) || ' ' || pi.unit
-                END AS display
+            SELECT pi.ingredient_id,
+                COALESCE(uc.base_unit, 'piece') AS base_unit,
+                pi.quantity * COALESCE(uc.factor, 1) AS have_base,
+                pi.quantity AS qty_raw,
+                COALESCE(pi.unit, '') AS unit_raw,
+                CASE WHEN COALESCE(pi.quantity, 0) = 0 THEN '0'
+                     WHEN COALESCE(pi.unit, '') = '' THEN TRIM(to_char(pi.quantity, 'FM999999990.##'))
+                     ELSE TRIM(to_char(pi.quantity, 'FM999999990.##')) || ' ' || pi.unit END AS display
             FROM pantry_items pi
-            LEFT JOIN unit_conversions uc
-                   ON LOWER(TRIM(COALESCE(pi.unit, ''))) = uc.from_unit
+            LEFT JOIN unit_conversions uc ON LOWER(TRIM(COALESCE(pi.unit, ''))) = uc.from_unit
             WHERE pi.user_id = p_user_id
         ),
-        -- Step 3: deficit = needed − have
         deficit AS (
-            SELECT
-                n.ingredient_name,
-                n.category,
-                n.occurrences,
-                n.base_unit,
-                n.needed_base,
-                COALESCE(h.have_base, 0)                                AS have_base,
-                n.needed_base - COALESCE(h.have_base, 0)               AS deficit_base,
-                n.distinct_units,
-                n.original_unit,
-                n.original_factor,
-                COALESCE(h.qty_raw, 0)                                  AS have_qty_raw,
-                COALESCE(h.unit_raw, '')                                AS pantry_unit_raw,
-                COALESCE(h.display, '0')                               AS pantry_display
+            SELECT n.ingredient_name, n.category, n.occurrences, n.base_unit,
+                n.needed_base, COALESCE(h.have_base, 0) AS have_base,
+                n.needed_base - COALESCE(h.have_base, 0) AS deficit_base,
+                n.distinct_units, n.original_unit, n.original_factor,
+                COALESCE(h.qty_raw, 0) AS have_qty_raw,
+                COALESCE(h.unit_raw, '') AS pantry_unit_raw,
+                COALESCE(h.display, '0') AS pantry_display
             FROM needed n
-            -- only match pantry if it uses the same physical dimension
-            LEFT JOIN have h ON h.ingredient_id = n.ingredient_id
-                             AND h.base_unit     = n.base_unit
+            LEFT JOIN have h ON h.ingredient_id = n.ingredient_id AND h.base_unit = n.base_unit
         )
-        -- Step 4: filter by threshold and format display
-        SELECT
-            ingredient_name,
-            category,
-            occurrences,
-            have_qty_raw,
-            pantry_unit_raw,
-            pantry_display,
-            CASE
-                -- single unit across all recipes → show in that original unit
-                WHEN distinct_units = 1 AND original_factor IS NOT NULL
-                    THEN TRIM(to_char(
-                             ROUND((deficit_base / original_factor)::NUMERIC, 2),
-                             'FM999999990.##'))
-                         || ' ' || original_unit
-                -- mixed units → show in base unit
-                ELSE TRIM(to_char(ROUND(deficit_base::NUMERIC, 1), 'FM999999990.##'))
-                     || ' ' || base_unit
+        SELECT ingredient_name, category, occurrences, have_qty_raw, pantry_unit_raw, pantry_display,
+            CASE WHEN distinct_units = 1 AND original_factor IS NOT NULL
+                 THEN TRIM(to_char(ROUND((deficit_base / original_factor)::NUMERIC, 2), 'FM999999990.##'))
+                      || ' ' || original_unit
+                 ELSE TRIM(to_char(ROUND(deficit_base::NUMERIC, 1), 'FM999999990.##')) || ' ' || base_unit
             END AS quantity_display
         FROM deficit
-        WHERE
-            deficit_base > 0
-            AND (
-                (base_unit = 'g'  AND deficit_base >= 5)   OR
-                (base_unit = 'ml' AND deficit_base >= 5)
-            )
+        WHERE deficit_base > 0
+          AND ((base_unit = 'g' AND deficit_base >= 5) OR (base_unit = 'ml' AND deficit_base >= 5))
         ORDER BY category, ingredient_name
     ) missing_items;
 
-    RETURN json_build_object(
-        'success', true,
-        'data',    COALESCE(v_result, '[]'::JSON),
-        'message', 'Normalised ingredient comparison: only items you genuinely need more of'
-    );
+    RETURN json_build_object('success', true, 'data', COALESCE(v_result, '[]'::JSON),
+        'message', 'Normalised ingredient comparison: only items you genuinely need more of');
 END;
 $$ LANGUAGE plpgsql;
 
 
+-- 8.2  Save AI-processed shopping list (no plan dependency)
 CREATE OR REPLACE FUNCTION save_ai_shopping_list(
-    p_plan_id INTEGER,
     p_user_id INTEGER,
-    p_items JSON  -- AI-processed items
+    p_items   JSON,
+    p_name    VARCHAR(100) DEFAULT NULL
 )
 RETURNS JSON AS $$
 DECLARE
     v_list_id INTEGER;
-    v_item JSON;
+    v_item    JSON;
 BEGIN
-    -- Verify plan ownership
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
-    END IF;
-
-    -- Delete old shopping list for this plan
-    DELETE FROM shopping_lists WHERE plan_id = p_plan_id;
-
-    -- Create new shopping list
-    INSERT INTO shopping_lists (plan_id)
-    VALUES (p_plan_id)
+    INSERT INTO shopping_lists (user_id, name)
+    VALUES (p_user_id, p_name)
     RETURNING list_id INTO v_list_id;
 
-    -- Insert AI-processed items
     FOR v_item IN SELECT value FROM json_array_elements(p_items)
     LOOP
-        INSERT INTO shopping_list_items (
-            list_id, 
-            ingredient_name, 
-            quantity, 
-            category, 
-            is_checked
-        ) VALUES (
-            v_list_id,
-            v_item->>'name',
-            v_item->>'quantity',
-            v_item->>'category',
-            FALSE
-        );
+        INSERT INTO shopping_list_items (list_id, ingredient_name, quantity, category, is_checked)
+        VALUES (v_list_id, v_item->>'name', v_item->>'quantity', v_item->>'category', FALSE);
     END LOOP;
 
-    RETURN json_build_object(
-        'success', true,
-        'list_id', v_list_id,
-        'message', 'Shopping list saved successfully'
-    );
+    RETURN json_build_object('success', true, 'list_id', v_list_id, 'message', 'Shopping list saved');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1836,100 +1604,34 @@ $$ LANGUAGE plpgsql;
 --  SECTION 9: PLAN TEMPLATES
 -- ============================================================
 
--- 9.1  Save current week plan as a reusable template
-CREATE OR REPLACE FUNCTION save_plan_as_template(
-    p_user_id INTEGER,
-    p_plan_id INTEGER,
-    p_name    VARCHAR(100)
+-- 9.1  Save a set of meals as a named template
+--      meal_data: [{ day_index, meal_type, recipe_id }]  (day_index 0-based)
+CREATE OR REPLACE FUNCTION save_meals_as_template(
+    p_user_id   INTEGER,
+    p_name      VARCHAR(100),
+    p_meal_data JSON
 )
 RETURNS JSON AS $$
-DECLARE
-    v_meal_data JSON;
-    v_tmpl_id   INTEGER;
+DECLARE v_tmpl_id INTEGER;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
+    IF p_meal_data IS NULL OR json_typeof(p_meal_data) <> 'array' THEN
+        RETURN json_build_object('success', false, 'message', 'No meal data provided');
     END IF;
 
-    SELECT json_agg(json_build_object(
-        'day_of_week', day_of_week,
-        'meal_type',   meal_type,
-        'recipe_id',   recipe_id
-    ))
-    INTO v_meal_data
-    FROM meal_plan_recipes
-    WHERE plan_id = p_plan_id;
-
-    IF v_meal_data IS NULL THEN
-        RETURN json_build_object('success', false, 'message', 'Plan has no meals to save');
-    END IF;
-
-    -- Prevent duplicate template names for the same user
     IF EXISTS (SELECT 1 FROM saved_plan_templates WHERE user_id = p_user_id AND LOWER(name) = LOWER(p_name)) THEN
         RETURN json_build_object('success', false, 'message', 'A template with this name already exists');
     END IF;
 
     INSERT INTO saved_plan_templates (user_id, name, meal_data)
-    VALUES (p_user_id, p_name, v_meal_data)
+    VALUES (p_user_id, p_name, p_meal_data)
     RETURNING template_id INTO v_tmpl_id;
 
-    RETURN json_build_object(
-        'success',     true,
-        'template_id', v_tmpl_id,
-        'message',     'Template saved'
-    );
+    RETURN json_build_object('success', true, 'template_id', v_tmpl_id, 'message', 'Template saved');
 END;
 $$ LANGUAGE plpgsql;
 
 
--- 9.2  Load a template into a meal plan (replaces existing meals)
-CREATE OR REPLACE FUNCTION load_template_into_plan(
-    p_template_id INTEGER,
-    p_user_id     INTEGER,
-    p_plan_id     INTEGER
-)
-RETURNS JSON AS $$
-DECLARE
-    v_meal_data JSONB;
-    v_slot      JSONB;
-BEGIN
-    SELECT meal_data::JSONB INTO v_meal_data
-    FROM saved_plan_templates
-    WHERE template_id = p_template_id AND user_id = p_user_id;
-
-    IF NOT FOUND THEN
-        RETURN json_build_object('success', false, 'message', 'Template not found');
-    END IF;
-
-    IF v_meal_data IS NULL OR jsonb_typeof(v_meal_data) <> 'array' THEN
-        RETURN json_build_object('success', false, 'message', 'Template has no meal data');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Target plan not found');
-    END IF;
-
-    -- Replace all slots in the target plan with the template's slots
-    DELETE FROM meal_plan_recipes WHERE plan_id = p_plan_id;
-
-    FOR v_slot IN SELECT value FROM jsonb_array_elements(v_meal_data)
-    LOOP
-        INSERT INTO meal_plan_recipes (plan_id, recipe_id, day_of_week, meal_type)
-        VALUES (
-            p_plan_id,
-            (v_slot->>'recipe_id')::INTEGER,
-            v_slot->>'day_of_week',
-            v_slot->>'meal_type'
-        )
-        ON CONFLICT DO NOTHING;
-    END LOOP;
-
-    RETURN json_build_object('success', true, 'message', 'Template applied to plan');
-END;
-$$ LANGUAGE plpgsql;
-
-
--- 9.3  Get all saved templates for a user (includes resolved meal list with recipe titles)
+-- 9.2  Get all saved templates for a user (includes resolved meal list with recipe titles)
 CREATE OR REPLACE FUNCTION get_user_templates(p_user_id INTEGER)
 RETURNS JSON AS $$
 DECLARE v_result JSON;
@@ -1939,35 +1641,17 @@ BEGIN
             'template_id', t.template_id,
             'name',        t.name,
             'created_at',  t.created_at,
-            'meals',       (
-                SELECT COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'day_of_week',  m_data->>'day_of_week',
-                            'meal_type',    m_data->>'meal_type',
-                            'recipe_id',    (m_data->>'recipe_id')::INTEGER,
-                            'recipe_title', COALESCE(r.title, 'Recipe #' || (m_data->>'recipe_id'))
-                        )
-                        ORDER BY
-                            CASE m_data->>'day_of_week'
-                                WHEN 'Sunday'    THEN 0 WHEN 'Monday'    THEN 1 WHEN 'Tuesday'  THEN 2
-                                WHEN 'Wednesday' THEN 3 WHEN 'Thursday'  THEN 4 WHEN 'Friday'   THEN 5
-                                WHEN 'Saturday'  THEN 6 ELSE 7
-                            END,
-                            CASE m_data->>'meal_type'
-                                WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'dinner' THEN 2
-                                ELSE 3
-                            END
-                    ),
-                    '[]'::JSON
-                )
+            'meals', (
+                SELECT COALESCE(json_agg(json_build_object(
+                    'day_index',   (m_data->>'day_index')::INTEGER,
+                    'meal_type',   m_data->>'meal_type',
+                    'recipe_id',   (m_data->>'recipe_id')::INTEGER,
+                    'recipe_title', COALESCE(r.title, 'Recipe #' || (m_data->>'recipe_id'))
+                ) ORDER BY (m_data->>'day_index')::INTEGER,
+                    CASE m_data->>'meal_type' WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 ELSE 2 END
+                ), '[]'::JSON)
                 FROM json_array_elements(
-                    -- Guard against non-array meal_data to prevent "cannot call
-                    -- json_array_elements on a non-array" errors
-                    CASE WHEN json_typeof(t.meal_data) = 'array'
-                         THEN t.meal_data
-                         ELSE '[]'::JSON
-                    END
+                    CASE WHEN json_typeof(t.meal_data) = 'array' THEN t.meal_data ELSE '[]'::JSON END
                 ) AS m_data
                 LEFT JOIN recipes r ON r.recipe_id = (m_data->>'recipe_id')::INTEGER
             )
@@ -1983,23 +1667,19 @@ END;
 $$ LANGUAGE plpgsql;
 
 
--- 9.4  Delete a saved template
+-- 9.3  Delete a saved template
 CREATE OR REPLACE FUNCTION delete_template(p_template_id INTEGER, p_user_id INTEGER)
 RETURNS JSON AS $$
 BEGIN
-    DELETE FROM saved_plan_templates
-    WHERE template_id = p_template_id AND user_id = p_user_id;
-
+    DELETE FROM saved_plan_templates WHERE template_id = p_template_id AND user_id = p_user_id;
     IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'message', 'Template not found');
     END IF;
-
     RETURN json_build_object('success', true, 'message', 'Template deleted');
 END;
 $$ LANGUAGE plpgsql;
 
 
--- ============================================================
 -- ============================================================
 --  SECTION 10: NUTRITION
 -- ============================================================
@@ -2010,84 +1690,65 @@ RETURNS JSON AS $$
 DECLARE v_n recipe_nutrition%ROWTYPE;
 BEGIN
     SELECT * INTO v_n FROM recipe_nutrition WHERE recipe_id = p_recipe_id;
-
     IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'message', 'Nutrition info not available');
     END IF;
-
-    RETURN json_build_object(
-        'success',   true,
-        'recipe_id', p_recipe_id,
-        'calories',  v_n.calories,
-        'protein_g', v_n.protein_g,
-        'carbs_g',   v_n.carbs_g,
-        'fat_g',     v_n.fat_g
-    );
+    RETURN json_build_object('success', true, 'recipe_id', p_recipe_id,
+        'calories', v_n.calories, 'protein_g', v_n.protein_g, 'carbs_g', v_n.carbs_g, 'fat_g', v_n.fat_g);
 END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION get_weekly_nutrition(p_plan_id INTEGER, p_user_id INTEGER)
+-- 10.2  Get nutrition summary for a date range
+CREATE OR REPLACE FUNCTION get_nutrition_for_range(
+    p_user_id INTEGER,
+    p_start   DATE,
+    p_end     DATE
+)
 RETURNS JSON AS $$
 DECLARE
     v_totals RECORD;
     v_daily  JSON;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM meal_plans WHERE plan_id = p_plan_id AND user_id = p_user_id) THEN
-        RETURN json_build_object('success', false, 'message', 'Plan not found');
-    END IF;
-
-    -- Daily breakdown (fixed)
     SELECT json_agg(json_build_object(
-        'day_of_week', day_of_week,
-        'calories',    total_calories,
-        'protein_g',   total_protein,
-        'carbs_g',     total_carbs,
-        'fat_g',       total_fat
-    ) ORDER BY
-        CASE day_of_week
-            WHEN 'Sunday'    THEN 0 WHEN 'Monday'   THEN 1 WHEN 'Tuesday'  THEN 2
-            WHEN 'Wednesday' THEN 3 WHEN 'Thursday' THEN 4 WHEN 'Friday'   THEN 5
-            WHEN 'Saturday'  THEN 6
-        END
-    )
+        'date',      date,
+        'calories',  total_calories,
+        'protein_g', total_protein,
+        'carbs_g',   total_carbs,
+        'fat_g',     total_fat
+    ) ORDER BY date)
     INTO v_daily
     FROM (
-        SELECT 
-            mpr.day_of_week,
+        SELECT dm.date,
             SUM(rn.calories)  AS total_calories,
             SUM(rn.protein_g) AS total_protein,
             SUM(rn.carbs_g)   AS total_carbs,
             SUM(rn.fat_g)     AS total_fat
-        FROM meal_plan_recipes mpr
-        JOIN recipe_nutrition rn ON rn.recipe_id = mpr.recipe_id
-        WHERE mpr.plan_id = p_plan_id
-        GROUP BY mpr.day_of_week
+        FROM daily_meals dm
+        JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
+        WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end
+        GROUP BY dm.date
     ) AS daily_totals;
 
-    -- Weekly totals
     SELECT
         COALESCE(SUM(rn.calories), 0)  AS total_calories,
         COALESCE(SUM(rn.protein_g), 0) AS total_protein,
         COALESCE(SUM(rn.carbs_g), 0)   AS total_carbs,
         COALESCE(SUM(rn.fat_g), 0)     AS total_fat
     INTO v_totals
-    FROM meal_plan_recipes mpr
-    JOIN recipe_nutrition rn ON rn.recipe_id = mpr.recipe_id
-    WHERE mpr.plan_id = p_plan_id;
+    FROM daily_meals dm
+    JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
+    WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end;
 
-    RETURN json_build_object(
-        'success', true,
-        'weekly_totals', json_build_object(
-            'calories',  v_totals.total_calories,
-            'protein_g', v_totals.total_protein,
-            'carbs_g',   v_totals.total_carbs,
-            'fat_g',     v_totals.total_fat
-        ),
-        'daily_breakdown', COALESCE(v_daily, '[]'::JSON)
-    );
+    RETURN json_build_object('success', true,
+        'totals', json_build_object(
+            'calories', v_totals.total_calories, 'protein_g', v_totals.total_protein,
+            'carbs_g', v_totals.total_carbs, 'fat_g', v_totals.total_fat),
+        'daily_breakdown', COALESCE(v_daily, '[]'::JSON));
 END;
 $$ LANGUAGE plpgsql;
+
+
 
 
 -- ============================================================

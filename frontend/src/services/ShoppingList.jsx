@@ -59,7 +59,7 @@ export default function ShoppingList() {
             (i.ingredient_name || i.name || '').toLowerCase().trim()
           ));
           setPantryNames(names);
-          cascadeCheck(Array.from(names));
+          cascadeCheck(Array.from(names), false);
         })
         .catch(() => {});
     });
@@ -70,8 +70,8 @@ export default function ShoppingList() {
     if (openId === listId) changeOpenId(null);
   }
 
-  // ── cascade-check: auto-check matching items across all lists, show +N badge
-  function cascadeCheck(addedNamesArray) {
+  // ── cascade-check: auto-check matching items across all lists, optionally show +N badge
+  function cascadeCheck(addedNamesArray, showBump = true) {
     const addedSet = new Set(addedNamesArray.map(n => (n || '').toLowerCase().trim()).filter(Boolean));
     if (!addedSet.size) return;
     setLists(prev => {
@@ -87,7 +87,7 @@ export default function ShoppingList() {
         if (bumped > 0) rawBumps[list.id] = bumped;
         return bumped > 0 ? { ...list, items } : list;
       });
-      if (Object.keys(rawBumps).length > 0) {
+      if (Object.keys(rawBumps).length > 0 && showBump) {
         requestAnimationFrame(() => {
           const immediate = {};
           for (const [id, count] of Object.entries(rawBumps)) {

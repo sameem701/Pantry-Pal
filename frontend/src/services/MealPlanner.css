@@ -557,6 +557,98 @@
 .template-meal-count { font-size: 0.74rem; color: var(--text-muted); font-family: var(--font-sans); }
 .template-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
+/* -- Save template day-picker -------------------------------------------------- */
+.tmpl-day-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  margin-bottom: 16px;
+}
+.tmpl-day-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 2px solid var(--border-subtle, #ddd);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--canvas-bg, #f8f5f0);
+  cursor: pointer;
+  min-width: 68px;
+  flex-shrink: 0;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  user-select: none;
+}
+.tmpl-day-chip:hover { border-color: var(--accent-orange); }
+.tmpl-day-chip.selected {
+  border-color: var(--accent-orange);
+  background: #fff4ee;
+  box-shadow: 0 0 0 2px rgba(232,98,42,0.18);
+}
+.tmpl-day-chip.drag-highlight {
+  border-color: var(--accent-orange);
+  background: #fff4ee;
+  box-shadow: 0 0 0 2px rgba(232,98,42,0.35);
+}
+.tmpl-day-chip.swapping {
+  opacity: 0.4;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+.tmpl-day-chip.no-meals { opacity: 0.5; }
+.tmpl-day-chip-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-heading);
+  font-family: var(--font-sans);
+}
+.tmpl-day-chip-date {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+.tmpl-day-chip-count {
+  font-size: 0.7rem;
+  color: var(--accent-orange);
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+.tmpl-day-chip-empty {
+  font-size: 0.7rem;
+  color: var(--text-placeholder, #bbb);
+  font-family: var(--font-sans);
+  font-style: italic;
+}
+/* Lasso selection box */
+.tmpl-lasso-rect {
+  position: absolute;
+  border: 1.5px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+  border-radius: 3px;
+  pointer-events: none;
+}
+/* Lasso mode toggle button */
+.tmpl-mode-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-family: var(--font-sans);
+  border: 1.5px solid var(--border-default, #ccc);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.tmpl-mode-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+.tmpl-mode-btn.active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
 /* -- View template modal ------------------------------------------------------- */
 .view-tmpl-body {
   padding: 4px 0 12px;
@@ -631,7 +723,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-bottom: 4px;
+  padding-bottom: 16px;
 }
 .tmpl-slot {
   display: flex;
@@ -652,11 +744,13 @@
   cursor: grabbing;
 }
 .tmpl-slot-handle {
-  font-size: 1rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
   padding-top: 2px;
   cursor: grab;
   flex-shrink: 0;
+  letter-spacing: -3px;
+  opacity: 0.5;
 }
 .tmpl-slot-date-col {
   display: flex;
@@ -700,6 +794,20 @@
   color: var(--text-placeholder, #aaa);
   font-family: var(--font-sans);
   font-style: italic;
+}
+.tmpl-conflict-calendar {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.tmpl-slot--conflict {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+.tmpl-conflict-badge {
+  color: #d97706;
+  font-size: 0.85rem;
 }
 
 /* -- Shared tab helpers -------------------------------------------------------- */

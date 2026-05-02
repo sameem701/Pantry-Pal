@@ -8,7 +8,6 @@ import './App.css';
 import Login        from './services/Login';
 import Register     from './services/Register';
 import ForgotPassword from './services/ForgotPassword';
-import Dashboard    from './services/Dashboard';
 import Pantry       from './services/Pantry';
 import Recipes      from './services/Recipes';
 import RecipeDetail from './services/RecipeDetail';
@@ -42,7 +41,6 @@ class ErrorBoundary extends Component {
 
 // ── sidebar ───────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { to: '/dashboard',     icon: '🏠', label: 'Dashboard'        },
   { to: '/pantry',        icon: '🥦', label: 'Pantry'           },
   { to: '/recipes',       icon: '🍳', label: 'Recipes'          },
   { to: '/favourites',    icon: '♥',  label: 'Favourites'       },
@@ -111,12 +109,11 @@ function AppRoutes() {
         <Suspense fallback={<div className="page-loading">Loading…</div>}>
           <Routes>
             {/* public */}
-            <Route path="/login"           element={isAuth ? <Navigate to="/dashboard" replace /> : <Login />} />
-            <Route path="/register"        element={isAuth ? <Navigate to="/dashboard" replace /> : <Register />} />
+            <Route path="/login"           element={isAuth ? <Navigate to="/pantry" replace /> : <Login />} />
+            <Route path="/register"        element={isAuth ? <Navigate to="/pantry" replace /> : <Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
 
             {/* protected */}
-            <Route path="/dashboard"       element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/pantry"          element={<PrivateRoute><Pantry /></PrivateRoute>} />
             <Route path="/recipes"         element={<PrivateRoute><Recipes /></PrivateRoute>} />
             <Route path="/favourites"      element={<PrivateRoute><Favourites /></PrivateRoute>} />
@@ -130,7 +127,7 @@ function AppRoutes() {
             <Route path="/profile"         element={<PrivateRoute><Profile /></PrivateRoute>} />
 
             {/* default */}
-            <Route path="*" element={<Navigate to={isAuth ? '/dashboard' : '/login'} replace />} />
+            <Route path="*" element={<Navigate to={isAuth ? '/pantry' : '/login'} replace />} />
           </Routes>
         </Suspense>
       </main>

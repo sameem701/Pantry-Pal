@@ -888,101 +888,88 @@ INSERT INTO cooking_sessions (user_id, recipe_id, started_at, is_completed) VALU
 (102, 28, '2025-04-10 19:00:00', FALSE);
 
 -- ============================================================
---  MEAL PLANS
+--  DAILY MEALS  (per-user, per-date, per-meal-type)
+--  Week A = 2025-03-31 Mon..Fri   Week B = 2025-04-07 Mon..Wed
 -- ============================================================
-INSERT INTO meal_plans (plan_id, user_id, week_start, week_end, created_at) VALUES
-(1, 101, '2025-03-31', '2025-04-06', '2025-03-28 10:00:00'),
-(2, 102, '2025-03-31', '2025-04-06', '2025-03-28 11:00:00'),
-(3, 103, '2025-03-31', '2025-04-06', '2025-03-29 09:00:00'),
-(4, 105, '2025-03-31', '2025-04-06', '2025-03-29 14:00:00'),
-(5, 101, '2025-04-07', '2025-04-13', '2025-04-05 10:00:00'),
-(6, 102, '2025-04-07', '2025-04-13', '2025-04-05 11:00:00');
-
-SELECT setval('meal_plans_plan_id_seq', 20);
-
--- ============================================================
---  MEAL PLAN RECIPES
---  day_of_week: Sunday..Saturday; meal_type: breakfast/lunch/dinner
--- ============================================================
-INSERT INTO meal_plan_recipes (plan_id, recipe_id, day_of_week, meal_type) VALUES
--- Plan 1: alice week 1 (vegetarian-friendly selections)
-(1, 30, 'Monday',    'breakfast'),
-(1, 29, 'Tuesday',   'breakfast'),
-(1, 30, 'Wednesday', 'breakfast'),
-(1,  5, 'Monday',    'lunch'),
-(1,  9, 'Tuesday',   'lunch'),
-(1, 24, 'Wednesday', 'lunch'),
-(1,  5, 'Thursday',  'lunch'),
-(1, 27, 'Monday',    'dinner'),
-(1,  3, 'Tuesday',   'dinner'),
-(1, 27, 'Wednesday', 'dinner'),
-(1,  9, 'Thursday',  'dinner'),
-(1,  3, 'Friday',    'dinner'),
--- Plan 2: bob week 1 (gluten-free focus)
-(2, 30, 'Monday',    'breakfast'),
-(2, 13, 'Monday',    'lunch'),
-(2, 10, 'Monday',    'dinner'),
-(2, 29, 'Tuesday',   'breakfast'),
-(2, 19, 'Tuesday',   'lunch'),
-(2,  1, 'Tuesday',   'dinner'),
-(2, 30, 'Wednesday', 'breakfast'),
-(2, 28, 'Wednesday', 'lunch'),
-(2, 13, 'Wednesday', 'dinner'),
-(2, 29, 'Thursday',  'breakfast'),
-(2, 19, 'Thursday',  'lunch'),
-(2, 16, 'Thursday',  'dinner'),
-(2, 30, 'Friday',    'breakfast'),
-(2, 28, 'Friday',    'lunch'),
-(2, 10, 'Friday',    'dinner'),
--- Plan 3: cara week 1 (full variety)
-(3, 29, 'Monday',    'breakfast'),
-(3, 30, 'Tuesday',   'breakfast'),
-(3,  3, 'Monday',    'lunch'),
-(3,  2, 'Tuesday',   'lunch'),
-(3,  1, 'Monday',    'dinner'),
-(3, 21, 'Tuesday',   'dinner'),
-(3, 14, 'Wednesday', 'dinner'),
-(3, 20, 'Thursday',  'dinner'),
-(3,  3, 'Wednesday', 'lunch'),
-(3, 19, 'Thursday',  'lunch'),
-(3, 29, 'Wednesday', 'breakfast'),
-(3, 30, 'Thursday',  'breakfast'),
-(3, 30, 'Friday',    'breakfast'),
-(3,  2, 'Friday',    'lunch'),
-(3,  6, 'Friday',    'dinner'),
-(3, 29, 'Saturday',  'breakfast'),
-(3, 19, 'Saturday',  'lunch'),
-(3,  3, 'Saturday',  'dinner'),
--- Plan 4: elena week 1 (pescatarian)
-(4, 30, 'Monday',    'breakfast'),
-(4, 13, 'Monday',    'lunch'),
-(4, 16, 'Monday',    'dinner'),
-(4, 29, 'Tuesday',   'breakfast'),
-(4, 28, 'Tuesday',   'lunch'),
-(4, 18, 'Tuesday',   'dinner'),
-(4, 30, 'Wednesday', 'breakfast'),
-(4, 13, 'Wednesday', 'lunch'),
-(4, 25, 'Wednesday', 'dinner'),
-(4, 29, 'Thursday',  'breakfast'),
-(4, 28, 'Thursday',  'lunch'),
-(4, 16, 'Thursday',  'dinner'),
--- Plan 5: alice week 2
-(5, 30, 'Monday',    'breakfast'),
-(5, 29, 'Tuesday',   'breakfast'),
-(5, 30, 'Wednesday', 'breakfast'),
-(5, 27, 'Monday',    'lunch'),
-(5,  9, 'Tuesday',   'lunch'),
-(5, 24, 'Wednesday', 'lunch'),
-(5,  5, 'Monday',    'dinner'),
-(5,  3, 'Tuesday',   'dinner'),
-(5, 27, 'Wednesday', 'dinner'),
--- Plan 6: bob week 2
-(6, 30, 'Monday',    'breakfast'),
-(6, 13, 'Monday',    'lunch'),
-(6, 16, 'Monday',    'dinner'),
-(6, 29, 'Tuesday',   'breakfast'),
-(6, 28, 'Tuesday',   'lunch'),
-(6, 10, 'Tuesday',   'dinner');
+INSERT INTO daily_meals (user_id, date, meal_type, recipe_id) VALUES
+-- alice (101) — week of 2025-03-31 (vegetarian-friendly)
+(101, '2025-03-31', 'breakfast', 30),
+(101, '2025-03-31', 'lunch',      5),
+(101, '2025-03-31', 'dinner',    27),
+(101, '2025-04-01', 'breakfast', 29),
+(101, '2025-04-01', 'lunch',      9),
+(101, '2025-04-01', 'dinner',     3),
+(101, '2025-04-02', 'breakfast', 30),
+(101, '2025-04-02', 'lunch',     24),
+(101, '2025-04-02', 'dinner',    27),
+(101, '2025-04-03', 'lunch',      5),
+(101, '2025-04-03', 'dinner',     9),
+(101, '2025-04-04', 'dinner',     3),
+-- bob (102) — week of 2025-03-31 (gluten-free focus)
+(102, '2025-03-31', 'breakfast', 30),
+(102, '2025-03-31', 'lunch',     13),
+(102, '2025-03-31', 'dinner',    10),
+(102, '2025-04-01', 'breakfast', 29),
+(102, '2025-04-01', 'lunch',     19),
+(102, '2025-04-01', 'dinner',     1),
+(102, '2025-04-02', 'breakfast', 30),
+(102, '2025-04-02', 'lunch',     28),
+(102, '2025-04-02', 'dinner',    13),
+(102, '2025-04-03', 'breakfast', 29),
+(102, '2025-04-03', 'lunch',     19),
+(102, '2025-04-03', 'dinner',    16),
+(102, '2025-04-04', 'breakfast', 30),
+(102, '2025-04-04', 'lunch',     28),
+(102, '2025-04-04', 'dinner',    10),
+-- cara (103) — week of 2025-03-31 (full variety)
+(103, '2025-03-31', 'breakfast', 29),
+(103, '2025-03-31', 'lunch',      3),
+(103, '2025-03-31', 'dinner',     1),
+(103, '2025-04-01', 'breakfast', 30),
+(103, '2025-04-01', 'lunch',      2),
+(103, '2025-04-01', 'dinner',    21),
+(103, '2025-04-02', 'breakfast', 29),
+(103, '2025-04-02', 'lunch',      3),
+(103, '2025-04-02', 'dinner',    14),
+(103, '2025-04-03', 'breakfast', 30),
+(103, '2025-04-03', 'lunch',     19),
+(103, '2025-04-03', 'dinner',    20),
+(103, '2025-04-04', 'breakfast', 30),
+(103, '2025-04-04', 'lunch',      2),
+(103, '2025-04-04', 'dinner',     6),
+(103, '2025-04-05', 'breakfast', 29),
+(103, '2025-04-05', 'lunch',     19),
+(103, '2025-04-05', 'dinner',     3),
+-- elena (105) — week of 2025-03-31 (pescatarian)
+(105, '2025-03-31', 'breakfast', 30),
+(105, '2025-03-31', 'lunch',     13),
+(105, '2025-03-31', 'dinner',    16),
+(105, '2025-04-01', 'breakfast', 29),
+(105, '2025-04-01', 'lunch',     28),
+(105, '2025-04-01', 'dinner',    18),
+(105, '2025-04-02', 'breakfast', 30),
+(105, '2025-04-02', 'lunch',     13),
+(105, '2025-04-02', 'dinner',    25),
+(105, '2025-04-03', 'breakfast', 29),
+(105, '2025-04-03', 'lunch',     28),
+(105, '2025-04-03', 'dinner',    16),
+-- alice (101) — week of 2025-04-07
+(101, '2025-04-07', 'breakfast', 30),
+(101, '2025-04-07', 'lunch',     27),
+(101, '2025-04-07', 'dinner',     5),
+(101, '2025-04-08', 'breakfast', 29),
+(101, '2025-04-08', 'lunch',      9),
+(101, '2025-04-08', 'dinner',     3),
+(101, '2025-04-09', 'breakfast', 30),
+(101, '2025-04-09', 'lunch',     24),
+(101, '2025-04-09', 'dinner',    27),
+-- bob (102) — week of 2025-04-07
+(102, '2025-04-07', 'breakfast', 30),
+(102, '2025-04-07', 'lunch',     13),
+(102, '2025-04-07', 'dinner',    16),
+(102, '2025-04-08', 'breakfast', 29),
+(102, '2025-04-08', 'lunch',     28),
+(102, '2025-04-08', 'dinner',    10);
 
 -- ============================================================
 --  SAVED PLAN TEMPLATES
@@ -1003,12 +990,12 @@ SELECT setval('saved_plan_templates_template_id_seq', 10);
 -- ============================================================
 --  SHOPPING LISTS
 -- ============================================================
-INSERT INTO shopping_lists (list_id, plan_id, generated_at) VALUES
-(1, 1, '2025-03-28 10:00:00'),
-(2, 2, '2025-03-28 11:00:00'),
-(3, 3, '2025-03-29 09:00:00'),
-(4, 4, '2025-04-01 18:00:00'),
-(5, 5, '2025-04-04 15:00:00');
+INSERT INTO shopping_lists (list_id, user_id, name, generated_at) VALUES
+(1, 101, 'Week of Mar 31', '2025-03-28 10:00:00'),
+(2, 102, 'Week of Mar 31', '2025-03-28 11:00:00'),
+(3, 103, 'Week of Mar 31', '2025-03-29 09:00:00'),
+(4, 105, 'Week of Mar 31', '2025-04-01 18:00:00'),
+(5, 101, 'Week of Apr 07', '2025-04-04 15:00:00');
 
 SELECT setval('shopping_lists_list_id_seq', 20);
 
@@ -1210,93 +1197,82 @@ INSERT INTO cooking_sessions (user_id, recipe_id, started_at, is_completed) VALU
 (106, 23, '2025-04-21 17:30:00', FALSE);
 
 -- ============================================================
---  NEW MEAL PLANS  (plans 7-10: frank / grace / henry / david)
+--  ADDITIONAL DAILY MEALS  (week of 2025-04-14)
 -- ============================================================
-INSERT INTO meal_plans (plan_id, user_id, week_start, week_end, created_at) VALUES
-(7,  106, '2025-04-14', '2025-04-20', '2025-04-11 10:00:00'),
-(8,  107, '2025-04-14', '2025-04-20', '2025-04-11 11:00:00'),
-(9,  108, '2025-04-14', '2025-04-20', '2025-04-11 12:00:00'),
-(10, 104, '2025-04-14', '2025-04-20', '2025-04-11 14:00:00');
-
-SELECT setval('meal_plans_plan_id_seq', 25);
-
--- ============================================================
---  NEW MEAL PLAN RECIPES
--- ============================================================
-INSERT INTO meal_plan_recipes (plan_id, recipe_id, day_of_week, meal_type) VALUES
--- Plan 7: frank (106, Halal) — full week
-(7, 29, 'Monday',    'breakfast'),
-(7, 26, 'Monday',    'lunch'),
-(7,  4, 'Monday',    'dinner'),
-(7, 30, 'Tuesday',   'breakfast'),
-(7,  5, 'Tuesday',   'lunch'),
-(7,  6, 'Tuesday',   'dinner'),
-(7, 29, 'Wednesday', 'breakfast'),
-(7, 24, 'Wednesday', 'lunch'),
-(7, 17, 'Wednesday', 'dinner'),
-(7, 30, 'Thursday',  'breakfast'),
-(7, 26, 'Thursday',  'lunch'),
-(7, 10, 'Thursday',  'dinner'),
-(7, 29, 'Friday',    'breakfast'),
-(7, 19, 'Friday',    'lunch'),
-(7, 13, 'Friday',    'dinner'),
-(7, 30, 'Saturday',  'breakfast'),
-(7, 28, 'Saturday',  'lunch'),
-(7, 27, 'Saturday',  'dinner'),
-(7, 29, 'Sunday',    'breakfast'),
-(7,  5, 'Sunday',    'lunch'),
-(7,  4, 'Sunday',    'dinner'),
--- Plan 8: grace (107, Egg-free) — full week
-(8,  9, 'Monday',    'breakfast'),
-(8,  7, 'Monday',    'lunch'),
-(8,  1, 'Monday',    'dinner'),
-(8,  9, 'Tuesday',   'breakfast'),
-(8, 10, 'Tuesday',   'lunch'),
-(8, 16, 'Tuesday',   'dinner'),
-(8,  9, 'Wednesday', 'breakfast'),
-(8,  7, 'Wednesday', 'lunch'),
-(8, 17, 'Wednesday', 'dinner'),
-(8,  8, 'Thursday',  'breakfast'),
-(8, 24, 'Thursday',  'lunch'),
-(8, 18, 'Thursday',  'dinner'),
-(8,  8, 'Friday',    'breakfast'),
-(8, 26, 'Friday',    'lunch'),
-(8, 22, 'Friday',    'dinner'),
-(8,  9, 'Saturday',  'breakfast'),
-(8,  7, 'Saturday',  'lunch'),
-(8, 10, 'Saturday',  'dinner'),
--- Plan 9: henry (108, Kosher) — full week
-(9, 29, 'Monday',    'breakfast'),
-(9, 13, 'Monday',    'lunch'),
-(9, 21, 'Monday',    'dinner'),
-(9, 30, 'Tuesday',   'breakfast'),
-(9, 28, 'Tuesday',   'lunch'),
-(9,  1, 'Tuesday',   'dinner'),
-(9, 29, 'Wednesday', 'breakfast'),
-(9,  3, 'Wednesday', 'lunch'),
-(9, 14, 'Wednesday', 'dinner'),
-(9, 30, 'Thursday',  'breakfast'),
-(9, 13, 'Thursday',  'lunch'),
-(9, 19, 'Thursday',  'dinner'),
-(9, 29, 'Friday',    'breakfast'),
-(9, 26, 'Friday',    'lunch'),
-(9, 21, 'Friday',    'dinner'),
--- Plan 10: david (104, Vegan + Nut-free) — full week
-(10,  9, 'Monday',    'breakfast'),
-(10, 24, 'Monday',    'lunch'),
-(10,  5, 'Monday',    'dinner'),
-(10,  9, 'Tuesday',   'breakfast'),
-(10, 26, 'Tuesday',   'lunch'),
-(10, 24, 'Tuesday',   'dinner'),
-(10,  9, 'Wednesday', 'breakfast'),
-(10,  5, 'Wednesday', 'lunch'),
-(10, 24, 'Wednesday', 'dinner'),
-(10, 24, 'Thursday',  'lunch'),
-(10, 26, 'Thursday',  'dinner'),
-(10,  9, 'Friday',    'breakfast'),
-(10,  5, 'Friday',    'lunch'),
-(10,  9, 'Saturday',  'lunch'),
-(10, 24, 'Saturday',  'dinner');
+INSERT INTO daily_meals (user_id, date, meal_type, recipe_id) VALUES
+-- frank (106, Halal) — week of 2025-04-14
+(106, '2025-04-14', 'breakfast', 29),
+(106, '2025-04-14', 'lunch',     26),
+(106, '2025-04-14', 'dinner',     4),
+(106, '2025-04-15', 'breakfast', 30),
+(106, '2025-04-15', 'lunch',      5),
+(106, '2025-04-15', 'dinner',     6),
+(106, '2025-04-16', 'breakfast', 29),
+(106, '2025-04-16', 'lunch',     24),
+(106, '2025-04-16', 'dinner',    17),
+(106, '2025-04-17', 'breakfast', 30),
+(106, '2025-04-17', 'lunch',     26),
+(106, '2025-04-17', 'dinner',    10),
+(106, '2025-04-18', 'breakfast', 29),
+(106, '2025-04-18', 'lunch',     19),
+(106, '2025-04-18', 'dinner',    13),
+(106, '2025-04-19', 'breakfast', 30),
+(106, '2025-04-19', 'lunch',     28),
+(106, '2025-04-19', 'dinner',    27),
+(106, '2025-04-20', 'breakfast', 29),
+(106, '2025-04-20', 'lunch',      5),
+(106, '2025-04-20', 'dinner',     4),
+-- grace (107, Egg-free) — week of 2025-04-14
+(107, '2025-04-14', 'breakfast',  9),
+(107, '2025-04-14', 'lunch',      7),
+(107, '2025-04-14', 'dinner',     1),
+(107, '2025-04-15', 'breakfast',  9),
+(107, '2025-04-15', 'lunch',     10),
+(107, '2025-04-15', 'dinner',    16),
+(107, '2025-04-16', 'breakfast',  9),
+(107, '2025-04-16', 'lunch',      7),
+(107, '2025-04-16', 'dinner',    17),
+(107, '2025-04-17', 'breakfast',  8),
+(107, '2025-04-17', 'lunch',     24),
+(107, '2025-04-17', 'dinner',    18),
+(107, '2025-04-18', 'breakfast',  8),
+(107, '2025-04-18', 'lunch',     26),
+(107, '2025-04-18', 'dinner',    22),
+(107, '2025-04-19', 'breakfast',  9),
+(107, '2025-04-19', 'lunch',      7),
+(107, '2025-04-19', 'dinner',    10),
+-- henry (108, Kosher) — week of 2025-04-14
+(108, '2025-04-14', 'breakfast', 29),
+(108, '2025-04-14', 'lunch',     13),
+(108, '2025-04-14', 'dinner',    21),
+(108, '2025-04-15', 'breakfast', 30),
+(108, '2025-04-15', 'lunch',     28),
+(108, '2025-04-15', 'dinner',     1),
+(108, '2025-04-16', 'breakfast', 29),
+(108, '2025-04-16', 'lunch',      3),
+(108, '2025-04-16', 'dinner',    14),
+(108, '2025-04-17', 'breakfast', 30),
+(108, '2025-04-17', 'lunch',     13),
+(108, '2025-04-17', 'dinner',    19),
+(108, '2025-04-18', 'breakfast', 29),
+(108, '2025-04-18', 'lunch',     26),
+(108, '2025-04-18', 'dinner',    21),
+-- david (104, Vegan + Nut-free) — week of 2025-04-14
+(104, '2025-04-14', 'breakfast',  9),
+(104, '2025-04-14', 'lunch',     24),
+(104, '2025-04-14', 'dinner',     5),
+(104, '2025-04-15', 'breakfast',  9),
+(104, '2025-04-15', 'lunch',     26),
+(104, '2025-04-15', 'dinner',    24),
+(104, '2025-04-16', 'breakfast',  9),
+(104, '2025-04-16', 'lunch',      5),
+(104, '2025-04-16', 'dinner',    24),
+(104, '2025-04-17', 'lunch',     24),
+(104, '2025-04-17', 'dinner',    26),
+(104, '2025-04-18', 'breakfast',  9),
+(104, '2025-04-18', 'lunch',      5),
+(104, '2025-04-19', 'lunch',      9),
+(104, '2025-04-19', 'dinner',    24);
 
 -- ============================================================
 --  ADDITIONAL SAVED PLAN TEMPLATES  (now all 8 users covered)
@@ -1321,13 +1297,13 @@ INSERT INTO saved_plan_templates (user_id, name, meal_data, created_at) VALUES
 SELECT setval('saved_plan_templates_template_id_seq', 20);
 
 -- ============================================================
---  NEW SHOPPING LISTS  (plans 7-10)
+--  NEW SHOPPING LISTS  (week of Apr 14)
 -- ============================================================
-INSERT INTO shopping_lists (list_id, plan_id, generated_at) VALUES
-(6,  7, '2025-04-11 10:30:00'),
-(7,  8, '2025-04-11 11:30:00'),
-(8,  9, '2025-04-11 12:30:00'),
-(9, 10, '2025-04-11 14:30:00');
+INSERT INTO shopping_lists (list_id, user_id, name, generated_at) VALUES
+(6, 106, 'Week of Apr 14', '2025-04-11 10:30:00'),
+(7, 107, 'Week of Apr 14', '2025-04-11 11:30:00'),
+(8, 108, 'Week of Apr 14', '2025-04-11 12:30:00'),
+(9, 104, 'Week of Apr 14', '2025-04-11 14:30:00');
 
 SELECT setval('shopping_lists_list_id_seq', 30);
 

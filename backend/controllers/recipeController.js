@@ -31,7 +31,7 @@ const searchRecipesByPantry = async (userId, { cuisineIds = null, difficulty = n
     ? Number(maxMissing)
     : null;
   const query = `
-        SELECT search_recipes_by_pantry($1, $2, $3, $4, $5, $6) AS result
+        SELECT search_recipes_by_pantry($1::INTEGER, $2::INTEGER[], $3::VARCHAR, $4::INTEGER, $5::INTEGER, $6::INTEGER) AS result
     `;
   const { rows } = await pool.query(query, [
     userId,
@@ -57,7 +57,7 @@ const browseRecipes = async (userId, filters = {}, page = 1, limit = 10) => {
     : null;
 
   const query = `
-        SELECT browse_recipes($1, $2, $3, $4, $5, $6, $7) AS result
+        SELECT browse_recipes($1::INTEGER, $2::VARCHAR, $3::INTEGER[], $4::VARCHAR, $5::INTEGER, $6::INTEGER, $7::INTEGER) AS result
     `;
   const { rows } = await pool.query(query, [
     userId,

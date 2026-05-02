@@ -1,14 +1,12 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
-import { searchIngredients } from '../api/PantryApi';
 import {
-  createMealPlan, getMealPlan, clearMealPlan,
-  upsertMeal, removeMeal, markMealCooked,
+  getMealsForRange, upsertMeal, removeMeal, clearMealsForDate, markMealCooked,
   suggestMeals, getMissingIngredients,
-  savePlanAsTemplate, loadTemplateIntoPlan, listTemplates, deleteTemplate,
+  saveTemplate, listTemplates, deleteTemplate,
 } from '../api/MealPlanApi';
 import { browseRecipes, listFavourites, toggleFavourite } from '../api/RecipeApi';
 import { saveShoppingListLocally } from '../utils/shoppingListStore';
@@ -23,35 +21,6 @@ const RECIPE_VIEW_LABELS = { all: 'All', favourites: 'Saved', protein: 'Protein 
 
 function today0() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
-function getMonday(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-const DAY_ORDER = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-
-// Groups template meals by day and builds an ordered slot array spanning min→max used day.
-function buildTmplArrangement(meals) {
-  const groups = {};
-  for (const m of (meals || [])) {
-    if (!groups[m.day_of_week]) groups[m.day_of_week] = [];
-    groups[m.day_of_week].push(m);
-  }
-  const usedDays = Object.keys(groups);
-  if (!usedDays.length) return [];
-  const indices = usedDays.map(d => DAY_ORDER.indexOf(d)).filter(i => i >= 0);
-  const minIdx  = Math.min(...indices);
-  const maxIdx  = Math.max(...indices);
-  const slots = [];
-  for (let i = minIdx; i <= maxIdx; i++) {
-    const day = DAY_ORDER[i];
-    slots.push(groups[day] ? { day, meals: groups[day] } : null);
-  }
-  return slots;
-}
 function toISO(d) {
   const y   = d.getFullYear();
   const m   = String(d.getMonth() + 1).padStart(2, '0');
@@ -60,100 +29,61 @@ function toISO(d) {
 }
 function toShort(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
 function dayName(d) { return d.toLocaleDateString('en-US', { weekday: 'long' }); }
-function planKey(d) { return 'pantrypal_plan_' + toISO(d); }
 function fmtRange(s) {
   const e = addDays(s, 6);
-  return toShort(s) + ' - ' + e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return toShort(s) + ' \u2013 ' + e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// planWeekStart can be any day — meals are placed by matching day name within the 7-day window
-function buildSlotMap(meals, planWeekStart, planId) {
-  // Build a lookup: day name -> date, for each of the 7 days in this plan's window
-  const dayToDate = {};
-  for (let i = 0; i < 7; i++) {
-    const d = addDays(planWeekStart, i);
-    dayToDate[dayName(d)] = d;
-  }
+/** Build slotMap from the flat meals array returned by get_meals_for_range */
+function buildSlotMapFromMeals(meals) {
   const map = {};
   for (const m of (meals || [])) {
-    const slotDate = dayToDate[m.day_of_week];
-    if (!slotDate) continue;
-    const iso = toISO(slotDate);
-    map[iso + '-' + m.meal_type] = {
-      title:     m.recipe_title || m.recipe_name || ('Recipe #' + m.recipe_id),
-      recipeId:  m.recipe_id,
-      isCooked:  m.is_cooked || false,
-      dayOfWeek: m.day_of_week,
-      planId:    planId || null,
+    const key = m.date + '-' + m.meal_type;
+    map[key] = {
+      title:    m.recipe_title || m.recipe_name || ('Recipe #' + m.recipe_id),
+      recipeId: m.recipe_id,
+      isCooked: m.is_cooked || false,
       nutrition: {
-        calories: m.calories   || 0,
-        protein:  m.protein_g  || m.protein || 0,
-        carbs:    m.carbs_g    || m.carbs   || 0,
-        fat:      m.fat_g      || m.fat     || 0,
+        calories: m.calories  || 0,
+        protein:  m.protein_g || m.protein || 0,
+        carbs:    m.carbs_g   || m.carbs   || 0,
+        fat:      m.fat_g     || m.fat     || 0,
       },
     };
   }
   return map;
 }
 
-/* SVG donut chart: slices = [{pct, color, label}], pcts should sum to ~100 */
+/* SVG donut chart */
 function DonutChart({ slices, centerLabel, centerSub }) {
-  const R            = 46;
-  const STROKE       = 13;
-  const SIZE         = 120;
+  const R = 46, STROKE = 13, SIZE = 120;
   const CX = SIZE / 2, CY = SIZE / 2;
   const circumference = 2 * Math.PI * R;
   const hasData = slices.some(s => s.pct > 0.5);
   let accumulated = 0;
   return (
     <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ display: 'block', margin: '0 auto' }}>
-      {/* background ring */}
       <circle cx={CX} cy={CY} r={R} fill="none" stroke="#f0ebe5" strokeWidth={STROKE} />
       {hasData && slices.filter(s => s.pct > 0.5).map((s, i) => {
         const dash       = (s.pct / 100) * circumference;
         const dashoffset = circumference * 0.25 - accumulated;
         accumulated += dash;
         return (
-          <circle
-            key={i}
-            cx={CX} cy={CY} r={R}
-            fill="none"
-            stroke={s.color}
+          <circle key={i} cx={CX} cy={CY} r={R} fill="none" stroke={s.color}
             strokeWidth={STROKE}
             strokeDasharray={`${dash} ${circumference - dash}`}
-            strokeDashoffset={dashoffset}
-            strokeLinecap="butt"
-          />
+            strokeDashoffset={dashoffset} strokeLinecap="butt" />
         );
       })}
       {centerLabel != null && (
         <text x={CX} y={CY + 5} textAnchor="middle" fontSize="14" fontWeight="700"
-              fill="#1a1a2e" fontFamily="sans-serif">
-          {centerLabel}
-        </text>
+          fill="#1a1a2e" fontFamily="sans-serif">{centerLabel}</text>
       )}
       {centerSub && (
         <text x={CX} y={CY + 19} textAnchor="middle" fontSize="9" fill="#888"
-              fontFamily="sans-serif">
-          {centerSub}
-        </text>
+          fontFamily="sans-serif">{centerSub}</text>
       )}
     </svg>
-  );
-}
-
-function MacroBar({ label, value, max, color }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-  return (
-    <div className="macro-bar-wrap">
-      <div className="macro-bar-head">
-        <span className="macro-label">{label}</span>
-        <span className="macro-value">{value != null ? Math.round(value) : '--'}</span>
-      </div>
-      <div className="macro-track">
-        <div className="macro-fill" style={{ width: pct + '%', background: color }} />
-      </div>
-    </div>
   );
 }
 
@@ -163,125 +93,89 @@ export default function MealPlanner() {
   const navigate     = useNavigate();
   const userId       = user?.user_id;
 
-  const [startDate,    setStartDate]    = useState(() => today0());
-  const todayIso  = toISO(today0());
-  const weekDays  = Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
+  const [startDate,     setStartDate]     = useState(() => today0());
+  const todayIso = toISO(today0());
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startDate, i));
+  const startISO = toISO(startDate);
+  const endISO   = toISO(addDays(startDate, 6));
 
-  const [planId,         setPlanId]         = useState(null);
-  const [planId2,        setPlanId2]        = useState(null); // overflow week plan
-  const planCacheRef = useRef({});           // { isoMonday: planId } – stale-closure-safe
-  const [reloadTrigger,  setReloadTrigger]  = useState(0);   // force reload after template apply
-  const [slotMap,        setSlotMap]        = useState({});
-  const [loading,      setLoading]      = useState(false);
-  const [activeTab,    setActiveTab]    = useState('calendar');
-  const [isDirty,      setIsDirty]      = useState(false);   // unsaved calendar changes
-  const [pendingTab,   setPendingTab]   = useState(null);    // tab clicked while dirty
-  const [nutViewDate,  setNutViewDate]  = useState(() => today0()); // nutrition date nav
-
-  const [dragOver,     setDragOver]     = useState(null);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+  const [slotMap,       setSlotMap]       = useState({});
+  const [loading,       setLoading]       = useState(false);
+  const [activeTab,     setActiveTab]     = useState('calendar');
+  const [dragOver,      setDragOver]      = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
-  const [suggestionOptions, setSuggestionOptions] = useState([]); // [{option_number, meals:[]}]
-  const [activeSuggOption,  setActiveSuggOption]  = useState(0);  // index into suggestionOptions
-  const [suggestions,    setSuggestions]    = useState([]);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const [applyAllMode,   setApplyAllMode]   = useState(false);
+  // ── clear mode ─────────────────────────────────────────────────────────────
+  const [clearMode,     setClearMode]     = useState(false);
+  const [selectedSlots, setSelectedSlots] = useState(new Set());
 
+  // ── suggestions ────────────────────────────────────────────────────────────
+  const [suggestionOptions, setSuggestionOptions] = useState([]);
+  const [activeSuggOption,  setActiveSuggOption]  = useState(0);
+  const [suggestions,       setSuggestions]       = useState([]);
+  const [suggestLoading,    setSuggestLoading]    = useState(false);
+  const [applyAllMode,      setApplyAllMode]      = useState(false);
+
+  // ── click-to-assign ────────────────────────────────────────────────────────
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
+
+  // ── recipes ────────────────────────────────────────────────────────────────
   const [recipeList,    setRecipeList]    = useState([]);
   const [recipeSearch,  setRecipeSearch]  = useState('');
   const [recipeView,    setRecipeView]    = useState('all');
   const [recipeLoading, setRecipeLoading] = useState(false);
   const recipeTimer = useRef(null);
 
+  // ── shopping ───────────────────────────────────────────────────────────────
   const [shopModal,      setShopModal]      = useState(false);
   const [shopItems,      setShopItems]      = useState([]);
   const [shopLoading,    setShopLoading]    = useState(false);
   const [shopGenerating, setShopGenerating] = useState(false);
 
+  // ── templates ──────────────────────────────────────────────────────────────
   const [templates,        setTemplates]        = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templateName,     setTemplateName]     = useState('');
-  const [savingTemplate,   setSavingTemplate]   = useState(false);
 
-  // ── click-to-assign (double-click to select, click slot to place) ────────
-  const [selectedRecipe, setSelectedRecipe] = useState(null); // { recipeId, title, nutrition }
+  // save template modal
+  const [saveTmplModal,     setSaveTmplModal]     = useState(false);
+  const [saveTmplName,      setSaveTmplName]      = useState('');
+  const [saveTmplDays,      setSaveTmplDays]      = useState(new Set());
+  const [savingTemplate,    setSavingTemplate]    = useState(false);
+  const saveTmplDragRef     = useRef({ active: false, start: null, end: null });
+  const [saveTmplDragRange, setSaveTmplDragRange] = useState(null); // {lo,hi} while dragging
+  // chip swap order: array of original day indices, e.g. [0,1,2,3,4,5,6]
+  const [saveTmplOrder,     setSaveTmplOrder]     = useState([]);
+  const saveTmplSwapRef     = useRef({ active: false, dragIdx: null }); // dragIdx = index in saveTmplOrder
 
-  // ── load template modal ──────────────────────────────────────────────────
-  const [loadTmplModal,       setLoadTmplModal]       = useState(null); // { template_id, name }
-  const [loadTmplWeekStart,   setLoadTmplWeekStart]   = useState('');
+  // load template modal
+  const [loadTmplModal,       setLoadTmplModal]       = useState(null);
+  const [loadTmplStartDate,   setLoadTmplStartDate]   = useState('');
   const [loadTmplWorking,     setLoadTmplWorking]     = useState(false);
-  const [loadTmplExisting,    setLoadTmplExisting]    = useState(false);
-  const [loadTmplConflictDays, setLoadTmplConflictDays] = useState([]); // days with conflicts
+  const [loadTmplConflicts,   setLoadTmplConflicts]   = useState(new Set());
+  const [loadTmplArrangement, setLoadTmplArrangement] = useState([]);
+  const [loadTmplDragIdx,     setLoadTmplDragIdx]     = useState(null);
 
-  // ── view template modal ──────────────────────────────────────────────────
-  const [viewTmplModal, setViewTmplModal] = useState(null); // { name, meals: [...] }
+  // view template modal
+  const [viewTmplModal, setViewTmplModal] = useState(null);
 
-  // ── week-nudge: shown once after the user creates their first meal in a new plan ──
-  const [showWeekNudge, setShowWeekNudge] = useState(false);
-
-  // ── template load arrangement (drag-and-drop day reorder) ────────────────
-  const [tmplArrangement, setTmplArrangement] = useState([]); // [{ day, meals }|null]
-  const [tmplDragIdx,     setTmplDragIdx]     = useState(null);
-
-  // ── plan tracking ─────────────────────────────────────────────────────────
-  // startISO = first visible day; endISO = last visible day (startDate + 6)
-  // Any plan whose [week_start, week_start+6] overlaps [startISO, endISO] is loaded.
-  const startISO = toISO(startDate);
-  const endISO   = toISO(addDays(startDate, 6));
-
+  // ── load meals ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     setSlotMap({});
     setSuggestions([]);
-    setPlanId(null);
-    setPlanId2(null);
-    planCacheRef.current = {};
     setLoading(true);
-
-    (async () => {
-      const merged   = {};
-      let newPlanId  = null;
-      let newPlanId2 = null;
-
-      // Scan localStorage for all plans overlapping [startISO, endISO]
-      const overlapping = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (!k?.startsWith('pantrypal_plan_')) continue;
-        const iso = k.replace('pantrypal_plan_', '');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
-        const planEndISO = toISO(addDays(new Date(iso + 'T00:00:00'), 6));
-        if (iso <= endISO && planEndISO >= startISO) {
-          overlapping.push({ weekStartISO: iso, storedId: Number(localStorage.getItem(k)) });
-        }
-      }
-      overlapping.sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO));
-
-      for (const { weekStartISO, storedId } of overlapping) {
-        if (cancelled) break;
-        try {
-          const data = await getMealPlan(storedId, userId);
-          if (!cancelled) {
-            const ws = data.week_start
-              ? new Date(data.week_start + 'T00:00:00')
-              : new Date(weekStartISO + 'T00:00:00');
-            Object.assign(merged, buildSlotMap(data.meals || data.data || [], ws, storedId));
-            planCacheRef.current[weekStartISO] = storedId;
-            if (!newPlanId)        { newPlanId  = storedId; }
-            else if (!newPlanId2)  { newPlanId2 = storedId; }
-          }
-        } catch { localStorage.removeItem('pantrypal_plan_' + weekStartISO); }
-      }
-
-      if (!cancelled) {
-        setPlanId(newPlanId);
-        setPlanId2(newPlanId2);
-        setSlotMap(merged);
-        setLoading(false);
-      }
-    })();
-
+    getMealsForRange(userId, startISO, endISO)
+      .then(data => {
+        if (cancelled) return;
+        const meals = Array.isArray(data?.meals) ? data.meals
+                    : Array.isArray(data?.data)  ? data.data
+                    : Array.isArray(data)        ? data : [];
+        setSlotMap(buildSlotMapFromMeals(meals));
+      })
+      .catch(() => { if (!cancelled) setSlotMap({}); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startISO, reloadTrigger, userId]);
@@ -320,126 +214,106 @@ export default function MealPlanner() {
   }, [userId, recipeView, recipeSearch]);
 
   // ── navigation ─────────────────────────────────────────────────────────────
-  // ±1 day: shift view freely
-  // << / >> : jump to previous / next meal plan start (any day)
-  function getStoredPlanStarts() {
-    const starts = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('pantrypal_plan_')) {
-        const iso = k.replace('pantrypal_plan_', '');
-        if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) starts.push(iso);
-      }
-    }
-    return starts.sort();
-  }
-
-  const allPlanStarts  = getStoredPlanStarts();
-  const nextPlanStart  = allPlanStarts.find(s => s > endISO)            || null;
-  const prevPlanStart  = [...allPlanStarts].reverse().find(s => s < startISO) || null;
-
   function nav(days) {
     setStartDate(d => addDays(d, days));
     setActiveTab('calendar');
-    setIsDirty(false);
-    setShowWeekNudge(false);
+    setClearMode(false);
+    setSelectedSlots(new Set());
   }
 
-  function navToPlan(isoMonday) {
-    if (!isoMonday) return;
-    setStartDate(new Date(isoMonday + 'T00:00:00'));
-    setActiveTab('calendar');
-    setIsDirty(false);
-    setShowWeekNudge(false);
-  }
-
-  // ── tab switch with unsaved-changes guard ──────────────────────────────────
   function handleTabClick(tab) {
     if (tab === activeTab) return;
-    if (isDirty && activeTab === 'calendar') {
-      setPendingTab(tab);
-      setConfirmAction({
-        title: 'Unsaved Changes',
-        message: 'You have unsaved changes to the calendar. Save before switching, or discard them?',
-        confirmLabel: 'Save & Switch',
-        cancelLabel:  'Discard & Switch',
-        onConfirm: () => {
-          setConfirmAction(null);
-          setIsDirty(false);
-          addToast('Plan saved.', 'success');
-          setActiveTab(tab);
-          setPendingTab(null);
-        },
-        onCancel: () => {
-          setConfirmAction(null);
-          setIsDirty(false);
-          setActiveTab(tab);
-          setPendingTab(null);
-        },
-      });
-    } else {
-      setActiveTab(tab);
-    }
+    setClearMode(false);
+    setSelectedSlots(new Set());
+    setActiveTab(tab);
   }
 
-  // ── save current plan ──────────────────────────────────────────────────────
-  function handleSavePlan() {
-    setIsDirty(false);
-    addToast('Plan saved!', 'success');
+  // ── nutrition ──────────────────────────────────────────────────────────────
+  function computeNutrition() {
+    const days = weekDays.map(date => {
+      const iso    = toISO(date);
+      const isPast = iso < todayIso;
+      const meals  = MEAL_TYPES
+        .map(type => { const s = slotMap[iso + '-' + type]; return s ? { type, title: s.title, nutrition: s.nutrition || {}, isCooked: s.isCooked } : null; })
+        .filter(Boolean);
+      const hasMeals = meals.length > 0;
+      const total = meals.reduce((a, m) => ({
+        calories: a.calories + (m.nutrition.calories || 0),
+        protein:  a.protein  + (m.nutrition.protein  || 0),
+        carbs:    a.carbs    + (m.nutrition.carbs     || 0),
+        fat:      a.fat      + (m.nutrition.fat       || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+      return { date, iso, isPast, isToday: iso === todayIso, meals, hasMeals, total };
+    });
+    const active = days.filter(d => d.hasMeals);
+    const wTotal = active.reduce((a, d) => ({
+      calories: a.calories + d.total.calories,
+      protein:  a.protein  + d.total.protein,
+      carbs:    a.carbs    + d.total.carbs,
+      fat:      a.fat      + d.total.fat,
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    return { days, active, wTotal };
   }
 
-  // ── nutrition view navigation ─────────────────────────────────────────────
-  function nutNav(days) { setNutViewDate(d => addDays(d, days)); }
-
-  // ── clear plan (only current week) ─────────────────────────────────────────
-  function confirmClear() {
-    setConfirmAction({
-      title: 'Clear Week',
-      message: 'Remove all meals from this week only? Other weeks are unaffected.',
-      onConfirm: async () => {
-        setConfirmAction(null);
-        setLoading(true);
-        try {
-          for (const [, pid] of Object.entries(planCacheRef.current)) {
-            await clearMealPlan(pid, userId);
-          }
-          setSlotMap({});
-          addToast('Week cleared.', 'success');
-        } catch (err) {
-          addToast(err.message || 'Failed to clear', 'error');
-        } finally { setLoading(false); }
-      },
+  // ── clear mode ─────────────────────────────────────────────────────────────
+  function toggleSlotSelection(key) {
+    setSelectedSlots(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
     });
   }
 
-  // ── lazy plan creation: get/create the plan covering a specific date ───────────
-  // If an existing cached plan covers the date, returns its ID.
-  // Otherwise creates a new plan with week_start = startDate (the current view start).
-  async function getOrCreatePlanForDate(date) {
-    const dateISO = toISO(date || startDate);
-    // Check if any cached plan already covers this date
-    for (const [wsISO, pid] of Object.entries(planCacheRef.current)) {
-      const planEndISO = toISO(addDays(new Date(wsISO + 'T00:00:00'), 6));
-      if (dateISO >= wsISO && dateISO <= planEndISO) return pid;
-    }
-    // No existing plan covers this date — create one with week_start = startDate
-    const weekStartISO = startISO;
-    const created = await createMealPlan(userId, weekStartISO);
-    const newId   = created.plan_id;
-    localStorage.setItem(planKey(startDate), String(newId));
-    planCacheRef.current[weekStartISO] = newId;
-    setPlanId(newId);
-    setShowWeekNudge(true);
-    return newId;
+  function toggleDaySelection(dateISO) {
+    const keys = MEAL_TYPES.map(t => dateISO + '-' + t);
+    const allSelected = keys.every(k => selectedSlots.has(k));
+    setSelectedSlots(prev => {
+      const next = new Set(prev);
+      if (allSelected) { keys.forEach(k => next.delete(k)); }
+      else             { keys.forEach(k => next.add(k)); }
+      return next;
+    });
   }
 
-  // ── drag from recipe list ──────────────────────────────────────────────────
+  async function handleClearSelected() {
+    if (!selectedSlots.size) return;
+    const slotsByDate = {};
+    for (const key of selectedSlots) {
+      const lastDash = key.lastIndexOf('-');
+      const date     = key.slice(0, lastDash);
+      const mealType = key.slice(lastDash + 1);
+      if (!slotsByDate[date]) slotsByDate[date] = [];
+      slotsByDate[date].push({ key, mealType });
+    }
+    try {
+      for (const [date, entries] of Object.entries(slotsByDate)) {
+        if (entries.length === MEAL_TYPES.length) {
+          await clearMealsForDate(userId, date);
+        } else {
+          for (const { mealType } of entries) await removeMeal(userId, date, mealType);
+        }
+      }
+      setSlotMap(prev => {
+        const next = { ...prev };
+        for (const key of selectedSlots) delete next[key];
+        return next;
+      });
+      const count = selectedSlots.size;
+      setSelectedSlots(new Set());
+      setClearMode(false);
+      addToast('Cleared ' + count + ' slot' + (count !== 1 ? 's' : '') + '.', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to clear', 'error');
+    }
+  }
+
+  // ── drag ───────────────────────────────────────────────────────────────────
   function handleDragStart(e, recipe, sourceKey) {
     e.dataTransfer.setData('application/json', JSON.stringify({
       recipeId:  recipe.recipe_id,
-      title:     recipe.title,
+      title:     recipe.title || recipe.recipe_title || ('Recipe #' + recipe.recipe_id),
       nutrition: {
-        calories: recipe.nutrition?.calories || recipe.calories || 0,
+        calories: recipe.nutrition?.calories  || recipe.calories  || 0,
         protein:  recipe.nutrition?.protein_g || recipe.protein_g || 0,
         carbs:    recipe.nutrition?.carbs_g   || recipe.carbs_g   || 0,
         fat:      recipe.nutrition?.fat_g     || recipe.fat_g     || 0,
@@ -449,161 +323,87 @@ export default function MealPlanner() {
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  // date: the actual Date object of the slot being dragged from
-  function handleSlotDragStart(e, date, day, type) {
-    const key  = toISO(date) + '-' + type;
+  function handleSlotDragStart(e, dateISO, type) {
+    const key  = dateISO + '-' + type;
     const slot = slotMap[key];
     if (!slot) return;
     e.dataTransfer.setData('application/json', JSON.stringify({
-      recipeId:      slot.recipeId,
-      title:         slot.title,
-      nutrition:     slot.nutrition || {},
-      sourceKey:     key,       // ISO-date key for slotMap lookup
-      sourceDayName: day,       // day name ("Monday" etc.) for DB operations
-      sourceType:    type,
+      recipeId:  slot.recipeId,
+      title:     slot.title,
+      nutrition: slot.nutrition || {},
+      sourceKey: key,
     }));
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  // date: the actual Date object of the drop target
-  async function handleDrop(e, day, type, date) {
+  async function handleDrop(e, dateISO, type) {
     e.preventDefault();
     setDragOver(null);
     try {
-      const data       = JSON.parse(e.dataTransfer.getData('application/json'));
-      const targetKey  = toISO(date) + '-' + type;
-      const existing   = slotMap[targetKey];
-      const targetPid  = await getOrCreatePlanForDate(date);
-      const sourcePid  = data.sourceKey ? (slotMap[data.sourceKey]?.planId || targetPid) : targetPid;
+      const data      = JSON.parse(e.dataTransfer.getData('application/json'));
+      const targetKey = dateISO + '-' + type;
+      const existing  = slotMap[targetKey];
 
       if (existing && data.sourceKey && data.sourceKey !== targetKey) {
-        // Swap: put existing into source slot, dragged recipe into target
-        const srcDay     = data.sourceDayName || day;
-        const srcType    = data.sourceType    || type;
-        const existPid   = existing.planId || targetPid;
-        await upsertMeal(sourcePid, userId, existing.recipeId, srcDay, srcType);
-        await upsertMeal(existPid,  userId, data.recipeId, day, type);
+        // Swap
+        const lastDash   = data.sourceKey.lastIndexOf('-');
+        const srcDate    = data.sourceKey.slice(0, lastDash);
+        const srcType    = data.sourceKey.slice(lastDash + 1);
+        await upsertMeal(userId, srcDate, srcType, existing.recipeId);
+        await upsertMeal(userId, dateISO, type, data.recipeId);
         setSlotMap(prev => ({
           ...prev,
-          [data.sourceKey]: { ...existing, dayOfWeek: srcDay, planId: sourcePid },
-          [targetKey]:      { title: data.title, recipeId: data.recipeId, isCooked: false, dayOfWeek: day, planId: existPid, nutrition: data.nutrition || {} },
+          [data.sourceKey]: { ...existing },
+          [targetKey]:      { title: data.title, recipeId: data.recipeId, isCooked: false, nutrition: data.nutrition || {} },
         }));
         addToast('Meals swapped!', 'success');
       } else {
-        await upsertMeal(targetPid, userId, data.recipeId, day, type);
+        await upsertMeal(userId, dateISO, type, data.recipeId);
         if (data.sourceKey && data.sourceKey !== targetKey) {
-          const srcDay  = data.sourceDayName || day;
-          const srcType = data.sourceType    || type;
-          await removeMeal(sourcePid, userId, srcDay, srcType);
+          const lastDash = data.sourceKey.lastIndexOf('-');
+          const srcDate  = data.sourceKey.slice(0, lastDash);
+          const srcType  = data.sourceKey.slice(lastDash + 1);
+          await removeMeal(userId, srcDate, srcType);
           setSlotMap(prev => {
             const n = { ...prev };
             delete n[data.sourceKey];
-            n[targetKey] = { title: data.title, recipeId: data.recipeId, isCooked: false, dayOfWeek: day, planId: targetPid, nutrition: data.nutrition || {} };
+            n[targetKey] = { title: data.title, recipeId: data.recipeId, isCooked: false, nutrition: data.nutrition || {} };
             return n;
           });
         } else {
           setSlotMap(prev => ({
             ...prev,
-            [targetKey]: { title: data.title, recipeId: data.recipeId, isCooked: false, dayOfWeek: day, planId: targetPid, nutrition: data.nutrition || {} },
+            [targetKey]: { title: data.title, recipeId: data.recipeId, isCooked: false, nutrition: data.nutrition || {} },
           }));
         }
         addToast('Added to ' + (MEAL_LABELS[type] || type), 'success');
-        setIsDirty(true);
       }
     } catch (err) {
       addToast(err.message || 'Failed to add meal', 'error');
     }
   }
 
-  async function handleRemove(date, day, type, e) {
+  async function handleRemove(dateISO, type, e) {
     e && e.stopPropagation();
-    const key  = toISO(date) + '-' + type;
-    const slot = slotMap[key];
-    const pid  = slot?.planId || planId;
-    if (!pid) return;
+    const key = dateISO + '-' + type;
     try {
-      await removeMeal(pid, userId, day, type);
+      await removeMeal(userId, dateISO, type);
       setSlotMap(prev => { const n = { ...prev }; delete n[key]; return n; });
-      setIsDirty(true);
     } catch (err) {
       addToast(err.message || 'Failed to remove', 'error');
     }
   }
 
-  // ── suggestions ────────────────────────────────────────────────────────────
-  async function handleSuggest() {
-    setSuggestLoading(true);
-    setSuggestions([]);
-    setSuggestionOptions([]);
-    setActiveSuggOption(0);
+  async function handleMarkCooked(dateISO, type, e) {
+    e && e.stopPropagation();
+    const key = dateISO + '-' + type;
     try {
-      const pid = await getOrCreatePlanForDate(startDate);
-      const data = await suggestMeals(pid, userId, 3);
-      // API returns { data: [ { option_number, meals: [...] }, ... ] }
-      const optionData = Array.isArray(data?.data) ? data.data
-                       : Array.isArray(data?.suggestions) ? data.suggestions
-                       : Array.isArray(data) ? data : [];
-      if (optionData.length > 0 && Array.isArray(optionData[0]?.meals)) {
-        // Nested: [{option_number: 1, meals: [...]}, {option_number: 2, meals: [...]}, ...]
-        setSuggestionOptions(optionData);
-        setSuggestions(optionData[0]?.meals || []);
-      } else {
-        // Flat list — wrap as single option
-        const flat = optionData;
-        setSuggestionOptions([{ option_number: 1, meals: flat }]);
-        setSuggestions(flat);
-      }
-      if (!optionData.length) addToast('No suggestions available at the moment.', 'info');
+      await markMealCooked(userId, dateISO, type);
+      setSlotMap(prev => ({ ...prev, [key]: { ...prev[key], isCooked: true } }));
+      addToast('Meal marked as cooked! Pantry updated.', 'success');
     } catch (err) {
-      addToast(err.message || 'Suggestions failed', 'error');
-    } finally {
-      setSuggestLoading(false);
+      addToast(err.message || 'Failed to mark as cooked', 'error');
     }
-  }
-
-  async function applySuggestion(s) {
-    const day   = s.day_of_week;
-    const type  = s.meal_type;
-    const title = s.recipe_title || s.title || ('Recipe #' + s.recipe_id);
-    // Find the date in the current 7-day view that matches this day name
-    const slotDate = Array.from({length: 7}, (_, i) => addDays(startDate, i)).find(d => dayName(d) === day)
-                     || startDate;
-    const slotIso  = toISO(slotDate);
-    try {
-      const pid = await getOrCreatePlanForDate(slotDate);
-      await upsertMeal(pid, userId, s.recipe_id, day, type);
-      setSlotMap(prev => ({
-        ...prev,
-        [slotIso + '-' + type]: { title, recipeId: s.recipe_id, isCooked: false, dayOfWeek: day, planId: pid, nutrition: {} },
-      }));
-      setSuggestions(prev => prev.filter(x => x !== s));
-      // Also remove from the active option
-      setSuggestionOptions(prev => prev.map((opt, idx) =>
-        idx === activeSuggOption
-          ? { ...opt, meals: opt.meals.filter(x => x !== s) }
-          : opt
-      ));
-      setIsDirty(true);
-    } catch (err) {
-      addToast(err.message || 'Failed to apply', 'error');
-      throw err;
-    }
-  }
-
-  async function handleApplyAllToDay(date) {
-    if (!applyAllMode || !suggestions.length) return;
-    setApplyAllMode(false);
-    const day = dayName(date);
-    const toApply = suggestions.slice(0, MEAL_TYPES.length).map((s, i) => ({
-      ...s, day_of_week: day, meal_type: MEAL_TYPES[i],
-    }));
-    let successCount = 0;
-    for (const s of toApply) {
-      try { await applySuggestion(s); successCount++; }
-      catch { /* error already toasted inside applySuggestion */ }
-    }
-    if (successCount > 0)
-      addToast(successCount + ' suggestion' + (successCount !== 1 ? 's' : '') + ' applied to ' + day + '!', 'success');
   }
 
   // ── click-to-assign ────────────────────────────────────────────────────────
@@ -620,63 +420,101 @@ export default function MealPlanner() {
     });
   }
 
-  async function handleSlotClick(date, day, type, e) {
+  async function handleSlotClick(dateISO, type, e) {
     e && e.stopPropagation();
+    if (clearMode) { toggleSlotSelection(dateISO + '-' + type); return; }
     if (!selectedRecipe) return;
-    const key = toISO(date) + '-' + type;
+    const key = dateISO + '-' + type;
     try {
-      const pid = await getOrCreatePlanForDate(date);
-      await upsertMeal(pid, userId, selectedRecipe.recipeId, day, type);
+      await upsertMeal(userId, dateISO, type, selectedRecipe.recipeId);
       setSlotMap(prev => ({
         ...prev,
-        [key]: { title: selectedRecipe.title, recipeId: selectedRecipe.recipeId, isCooked: false, dayOfWeek: day, planId: pid, nutrition: selectedRecipe.nutrition || {} },
+        [key]: { title: selectedRecipe.title, recipeId: selectedRecipe.recipeId, isCooked: false, nutrition: selectedRecipe.nutrition || {} },
       }));
       addToast('Added to ' + (MEAL_LABELS[type] || type), 'success');
-      setIsDirty(true);
       setSelectedRecipe(null);
     } catch (err) {
       addToast(err.message || 'Failed to add meal', 'error');
     }
   }
 
-  // ── mark meal as cooked ──────────────────────────────────────────────────
-  async function handleMarkCooked(date, day, type, e) {
-    e && e.stopPropagation();
-    const key  = toISO(date) + '-' + type;
-    const slot = slotMap[key];
-    const pid  = slot?.planId || planId;
-    if (!pid) return;
+  // ── suggestions ────────────────────────────────────────────────────────────
+  async function handleSuggest() {
+    setSuggestLoading(true);
+    setSuggestions([]);
+    setSuggestionOptions([]);
+    setActiveSuggOption(0);
     try {
-      await markMealCooked(pid, userId, day, type);
-      setSlotMap(prev => ({
-        ...prev,
-        [key]: { ...prev[key], isCooked: true },
-      }));
-      addToast('Meal marked as cooked! Pantry updated.', 'success');
+      const data = await suggestMeals(userId, startISO, 7);
+      const optionData = Array.isArray(data?.data)        ? data.data
+                       : Array.isArray(data?.suggestions) ? data.suggestions
+                       : Array.isArray(data)              ? data : [];
+      if (optionData.length > 0 && Array.isArray(optionData[0]?.meals)) {
+        setSuggestionOptions(optionData);
+        setSuggestions(optionData[0]?.meals || []);
+      } else {
+        setSuggestionOptions([{ option_number: 1, meals: optionData }]);
+        setSuggestions(optionData);
+      }
+      if (!optionData.length) addToast('No suggestions available at the moment.', 'info');
     } catch (err) {
-      addToast(err.message || 'Failed to mark as cooked', 'error');
+      addToast(err.message || 'Suggestions failed', 'error');
+    } finally {
+      setSuggestLoading(false);
     }
   }
 
-  // ── shopping modal ─────────────────────────────────────────────────────────
+  async function applySuggestion(s) {
+    const type  = s.meal_type;
+    const title = s.recipe_title || s.title || ('Recipe #' + s.recipe_id);
+    const slotDate = weekDays.find(d => dayName(d) === s.day_of_week) || startDate;
+    const slotISO  = toISO(slotDate);
+    try {
+      await upsertMeal(userId, slotISO, type, s.recipe_id);
+      setSlotMap(prev => ({
+        ...prev,
+        [slotISO + '-' + type]: { title, recipeId: s.recipe_id, isCooked: false, nutrition: {} },
+      }));
+      setSuggestions(prev => prev.filter(x => x !== s));
+      setSuggestionOptions(prev => prev.map((opt, idx) =>
+        idx === activeSuggOption ? { ...opt, meals: opt.meals.filter(x => x !== s) } : opt
+      ));
+    } catch (err) {
+      addToast(err.message || 'Failed to apply', 'error');
+      throw err;
+    }
+  }
+
+  async function handleApplyAllToDay(date) {
+    if (!applyAllMode || !suggestions.length) return;
+    setApplyAllMode(false);
+    const toApply = suggestions.slice(0, MEAL_TYPES.length).map((s, i) => ({
+      ...s, day_of_week: dayName(date), meal_type: MEAL_TYPES[i],
+    }));
+    let ok = 0;
+    for (const s of toApply) {
+      try { await applySuggestion(s); ok++; }
+      catch {}
+    }
+    if (ok > 0) addToast(ok + ' suggestion' + (ok !== 1 ? 's' : '') + ' applied!', 'success');
+  }
+
+  // ── shopping ───────────────────────────────────────────────────────────────
   async function openShopModal() {
-    const activePlanId = planId || planId2;
-    if (!activePlanId) return;
     setShopModal(true);
     setShopLoading(true);
     setShopItems([]);
     try {
-      const data  = await getMissingIngredients(activePlanId, userId);
+      const data  = await getMissingIngredients(userId, startISO, endISO);
       const items = Array.isArray(data?.missing) ? data.missing
                   : Array.isArray(data?.data)    ? data.data
                   : Array.isArray(data)          ? data : [];
       setShopItems(items.map(i => ({
         ingredient_name: i.ingredient_name || i.name || '',
-        // raw_breakdown shows total needed (e.g. "2 cups + 340 g"); pantry_display shows what user has
-        quantity:       i.raw_breakdown || i.quantity || '',
-        pantry_display: i.pantry_display || '',
-        ingredient_id:  i.ingredient_id || null,
-        is_checked: false,   // starts unchecked — user selects items they need to buy
+        quantity:        i.raw_breakdown   || i.quantity || '',
+        pantry_display:  i.pantry_display  || '',
+        ingredient_id:   i.ingredient_id   || null,
+        is_checked: false,
         adding:     false,
       })));
     } catch (err) {
@@ -704,47 +542,15 @@ export default function MealPlanner() {
     } finally { setShopGenerating(false); }
   }
 
-  // ── nutrition (computed from slotMap) ──────────────────────────────────────
-  function computeNutrition() {
-    const days = weekDays.map(date => {
-      const day    = dayName(date);
-      const iso    = toISO(date);
-      const isPast = iso < todayIso;
-      const meals  = MEAL_TYPES
-        .map(type => { const s = slotMap[iso + '-' + type]; return s ? { type, title: s.title, nutrition: s.nutrition || {} } : null; })
-        .filter(Boolean);
-      const hasMeals = meals.length > 0;
-      const total = meals.reduce((a, m) => ({
-        calories: a.calories + (m.nutrition.calories || 0),
-        protein:  a.protein  + (m.nutrition.protein  || 0),
-        carbs:    a.carbs    + (m.nutrition.carbs     || 0),
-        fat:      a.fat      + (m.nutrition.fat       || 0),
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-      return { date, day, iso, isPast, isToday: iso === todayIso, meals, hasMeals, total };
-    });
-    const active  = days.filter(d => d.hasMeals);
-    const missed  = days.filter(d => d.isPast && !d.hasMeals);
-    const wTotal  = active.reduce((a, d) => ({
-      calories: a.calories + d.total.calories,
-      protein:  a.protein  + d.total.protein,
-      carbs:    a.carbs    + d.total.carbs,
-      fat:      a.fat      + d.total.fat,
-    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-    const avg = active.length > 0 ? {
-      calories: wTotal.calories / active.length,
-      protein:  wTotal.protein  / active.length,
-      carbs:    wTotal.carbs    / active.length,
-      fat:      wTotal.fat      / active.length,
-    } : null;
-    return { days, active, missed, wTotal, avg };
-  }
-
   // ── templates ──────────────────────────────────────────────────────────────
   async function loadTemplates() {
     setTemplatesLoading(true);
     try {
       const data = await listTemplates(userId);
-      setTemplates(Array.isArray(data?.templates) ? data.templates : Array.isArray(data?.data) ? data.data : []);
+      setTemplates(
+        Array.isArray(data?.templates) ? data.templates :
+        Array.isArray(data?.data)      ? data.data : []
+      );
     } catch (err) {
       addToast(err.message || 'Failed to load templates', 'error');
     } finally { setTemplatesLoading(false); }
@@ -752,104 +558,151 @@ export default function MealPlanner() {
 
   useEffect(() => { if (activeTab === 'templates') loadTemplates(); }, [activeTab]);
 
+  // Day-chip interaction for save template modal (range-drag, swap)
+  useEffect(() => {
+    if (!saveTmplModal) { setSaveTmplDragRange(null); return; }
+
+    function onUp(e) {
+      // ── finish chip swap ──────────────────────────────────────────────────
+      if (saveTmplSwapRef.current.active) {
+        saveTmplSwapRef.current = { active: false, dragIdx: null };
+        return;
+      }
+
+      // ── finish range-drag ─────────────────────────────────────────────────
+      if (!saveTmplDragRef.current.active) return;
+      const { start, end } = saveTmplDragRef.current;
+      saveTmplDragRef.current = { active: false, start: null, end: null };
+      setSaveTmplDragRange(null);
+      if (start === null) return;
+      const lo = Math.min(start, end ?? start);
+      const hi = Math.max(start, end ?? start);
+      if (lo === hi) {
+        // single tap — toggle that chip
+        setSaveTmplDays(prev => {
+          const next = new Set(prev);
+          const dayIdx = saveTmplOrder[lo];
+          if (next.has(dayIdx)) next.delete(dayIdx); else next.add(dayIdx);
+          return next;
+        });
+      } else {
+        // range drag — select exactly that span
+        const nd = new Set();
+        for (let i = lo; i <= hi; i++) nd.add(saveTmplOrder[i]);
+        setSaveTmplDays(nd);
+      }
+    }
+
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveTmplModal, saveTmplOrder]);
+
+  // Save template modal
+  function openSaveTemplateModal() {
+    setSaveTmplName('');
+    const preSelected = new Set();
+    weekDays.forEach((date, i) => {
+      const iso = toISO(date);
+      if (MEAL_TYPES.some(t => slotMap[iso + '-' + t])) preSelected.add(i);
+    });
+    setSaveTmplDays(preSelected);
+    setSaveTmplOrder([0, 1, 2, 3, 4, 5, 6]);
+    setSaveTmplModal(true);
+  }
+
+  function toggleSaveTmplDay(idx) {
+    setSaveTmplDays(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  }
+
   async function handleSaveTemplate() {
-    if (!templateName.trim()) { addToast('Enter a template name', 'error'); return; }
+    if (!saveTmplName.trim()) { addToast('Enter a template name', 'error'); return; }
+    if (!saveTmplDays.size)   { addToast('Select at least one day', 'error'); return; }
+    // Use chip display order (saveTmplOrder) to determine template day indices
+    const orderedSelected = saveTmplOrder.filter(dayViewIdx => saveTmplDays.has(dayViewIdx));
+    const mealData = [];
+    orderedSelected.forEach((dayViewIdx, tmplIdx) => {
+      const iso = toISO(weekDays[dayViewIdx]);
+      MEAL_TYPES.forEach(mealType => {
+        const slot = slotMap[iso + '-' + mealType];
+        if (slot) mealData.push({ day_index: tmplIdx, meal_type: mealType, recipe_id: slot.recipeId });
+      });
+    });
+    if (!mealData.length) { addToast('No meals on the selected days', 'error'); return; }
     setSavingTemplate(true);
     try {
-      await savePlanAsTemplate(planId, userId, templateName.trim());
+      await saveTemplate(userId, saveTmplName.trim(), mealData);
       addToast('Template saved!', 'success');
-      setTemplateName('');
-      loadTemplates();
+      setSaveTmplModal(false);
+      setSaveTmplName('');
+      if (activeTab === 'templates') loadTemplates();
     } catch (err) {
       addToast(err.message || 'Failed to save template', 'error');
     } finally { setSavingTemplate(false); }
   }
 
-  function handleGoToExistingPlan() {
-    if (!loadTmplWeekStart) return;
-    const d = new Date(loadTmplWeekStart + 'T00:00:00');
-    setLoadTmplModal(null);
-    setTmplArrangement([]);
-    setActiveTab('calendar');
-    setStartDate(d);
+  // Load template modal
+  function computeLoadConflicts(startIso, arrangement) {
+    const conflicts = new Set();
+    arrangement.forEach((slot, idx) => {
+      if (!slot) return;
+      const dateISO = toISO(addDays(new Date(startIso + 'T00:00:00'), idx));
+      if (slot.meals.some(m => slotMap[dateISO + '-' + m.meal_type])) conflicts.add(dateISO);
+    });
+    return conflicts;
   }
 
-  async function handleRemoveConflictingPlans() {
-    if (!loadTmplWeekStart) return;
-    setLoadTmplWorking(true);
-    try {
-      // loadTmplWeekStart is always a Monday — there is exactly one plan to clear
-      const d      = new Date(loadTmplWeekStart + 'T00:00:00');
-      const stored = localStorage.getItem(planKey(d));
-      if (stored) {
-        await clearMealPlan(Number(stored), userId);
-      }
-      setLoadTmplExisting(false);
-      setLoadTmplConflictDays([]);
-      addToast('Existing plan cleared. You can now apply the template.', 'success');
-    } catch (err) {
-      addToast(err.message || 'Failed to clear existing plan', 'error');
-    } finally {
-      setLoadTmplWorking(false);
+  function handleLoadTemplate(t) {
+    const groups = {};
+    for (const m of (t.meals || [])) {
+      const idx = m.day_index ?? 0;
+      if (!groups[idx]) groups[idx] = [];
+      groups[idx].push(m);
     }
-  }
-
-  async function handleLoadTemplate(templateId, name) {
-    const tmpl = templates.find(t => t.template_id === templateId);
-    const meals = tmpl?.meals || [];
-    setTmplArrangement(buildTmplArrangement(meals));
-    // Default to today — template can start from any day the user picks.
+    const maxIdx = Math.max(-1, ...Object.keys(groups).map(Number));
+    const arrangement = Array.from({ length: maxIdx + 1 }, (_, i) =>
+      groups[i] ? { day_index: i, meals: groups[i] } : null
+    );
+    setLoadTmplArrangement(arrangement);
     const defaultStart = toISO(today0());
-    setLoadTmplWeekStart(defaultStart);
-    const existingPlan = !!localStorage.getItem(planKey(today0()));
-    setLoadTmplConflictDays([]);
-    setLoadTmplExisting(existingPlan && Object.keys(slotMap).length > 0);
-    setLoadTmplModal({ template_id: templateId, name });
+    setLoadTmplStartDate(defaultStart);
+    setLoadTmplConflicts(computeLoadConflicts(defaultStart, arrangement));
+    setLoadTmplModal({ template_id: t.template_id, name: t.name });
   }
 
   function handleLoadTmplDateChange(iso) {
-    if (!iso) { setLoadTmplWeekStart(''); return; }
-    setLoadTmplWeekStart(iso);
-    const d = new Date(iso + 'T00:00:00');
-    const existingPlan = !!localStorage.getItem(planKey(d));
-    setLoadTmplConflictDays([]);
-    setLoadTmplExisting(existingPlan);
+    setLoadTmplStartDate(iso);
+    if (iso) setLoadTmplConflicts(computeLoadConflicts(iso, loadTmplArrangement));
+    else     setLoadTmplConflicts(new Set());
   }
 
   async function confirmLoadTemplate() {
-    if (!loadTmplModal || !loadTmplWeekStart) return;
+    if (!loadTmplModal || !loadTmplStartDate || !loadTmplArrangement.length) return;
     setLoadTmplWorking(true);
     try {
-      // week_start = the chosen date (any day the user picked)
-      const chosenDate = new Date(loadTmplWeekStart + 'T00:00:00');
-      const created    = await createMealPlan(userId, loadTmplWeekStart);
-      const pid        = created.plan_id;
-      localStorage.setItem(planKey(chosenDate), String(pid));
-      planCacheRef.current[loadTmplWeekStart] = pid;
-
-      // Each slot at index i maps to chosenDate + i; use the actual day name for that date
-      for (let i = 0; i < tmplArrangement.length; i++) {
-        const slot = tmplArrangement[i];
+      const chosenDate = new Date(loadTmplStartDate + 'T00:00:00');
+      for (let i = 0; i < loadTmplArrangement.length; i++) {
+        const slot = loadTmplArrangement[i];
         if (!slot) continue;
-        const slotDate = addDays(chosenDate, i);
-        const dow      = dayName(slotDate);
-        for (const meal of slot.meals) {
-          await upsertMeal(pid, userId, meal.recipe_id, dow, meal.meal_type);
+        const dateISO = toISO(addDays(chosenDate, i));
+        for (const m of slot.meals) {
+          await upsertMeal(userId, dateISO, m.meal_type, m.recipe_id);
         }
       }
-
       const name = loadTmplModal.name;
       setLoadTmplModal(null);
-      setTmplArrangement([]);
+      setLoadTmplArrangement([]);
       setActiveTab('calendar');
       setStartDate(chosenDate);
       setReloadTrigger(t => t + 1);
-      addToast('Template "' + name + '" applied starting ' + toShort(chosenDate) + '!', 'success');
+      addToast('Template "' + name + '" applied!', 'success');
     } catch (err) {
       addToast(err.message || 'Failed to load template', 'error');
-    } finally {
-      setLoadTmplWorking(false);
-    }
+    } finally { setLoadTmplWorking(false); }
   }
 
   function confirmDeleteTemplate(templateId, name) {
@@ -879,43 +732,35 @@ export default function MealPlanner() {
     } catch {}
   }
 
-  const nut     = computeNutrition();
-  const hasNut  = nut.active.length > 0 && nut.wTotal.calories > 0;
+  const hasAnyMeals = Object.keys(slotMap).length > 0;
 
   return (
-    <div className={'mp-shell' + (applyAllMode ? ' apply-all-mode' : '') + (selectedRecipe ? ' click-assign-mode' : '')}>
+    <div className={[
+      'mp-shell',
+      applyAllMode   ? 'apply-all-mode'    : '',
+      selectedRecipe ? 'click-assign-mode' : '',
+      clearMode      ? 'clear-mode'        : '',
+    ].filter(Boolean).join(' ')}>
 
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="mp-page-header">
         <div className="mp-page-title-row">
           <h1 className="mp-page-title">Plan &amp; Nutrition</h1>
 
           <div className="mp-date-nav">
             <div className="mp-nav-group">
-              <button
-                className="mp-nav-outer"
-                onClick={() => navToPlan(prevPlanStart)}
-                disabled={!prevPlanStart}
-                title={prevPlanStart ? 'Previous meal plan (' + prevPlanStart + ')' : 'No earlier meal plans'}
-              >&laquo;</button>
+              <button className="mp-nav-outer" onClick={() => nav(-7)} title="Back 1 week">&laquo;</button>
               <button className="mp-nav-inner" onClick={() => nav(-1)} title="Back 1 day">&lsaquo;</button>
             </div>
-
             <div className="week-nav-center">
               <span className="week-range">{fmtRange(startDate)}</span>
-              {toISO(startDate) !== todayIso && (
+              {startISO !== todayIso && (
                 <button className="btn-today" onClick={() => setStartDate(today0())}>Today</button>
               )}
             </div>
-
             <div className="mp-nav-group">
               <button className="mp-nav-inner" onClick={() => nav(1)}  title="Forward 1 day">&rsaquo;</button>
-              <button
-                className="mp-nav-outer"
-                onClick={() => navToPlan(nextPlanStart)}
-                disabled={!nextPlanStart}
-                title={nextPlanStart ? 'Next meal plan (' + nextPlanStart + ')' : 'No upcoming meal plans'}
-              >&raquo;</button>
+              <button className="mp-nav-outer" onClick={() => nav(7)}  title="Forward 1 week">&raquo;</button>
             </div>
           </div>
         </div>
@@ -924,56 +769,32 @@ export default function MealPlanner() {
           <button className="btn-suggest" onClick={handleSuggest} disabled={suggestLoading}>
             {suggestLoading ? 'Loading...' : 'Suggest Meals'}
           </button>
-          {(planId || planId2) && (
+          {hasAnyMeals && (
             <>
-              <button className="btn-primary-sm" onClick={openShopModal}>
-                Shopping List
+              <button className="btn-primary-sm" onClick={openShopModal}>Shopping List</button>
+              <button
+                className={'btn-ghost-sm' + (clearMode ? ' active' : '')}
+                onClick={() => { setClearMode(m => !m); setSelectedSlots(new Set()); }}
+              >
+                {clearMode ? 'Cancel Clear' : 'Clear Mode'}
               </button>
-              {isDirty && (
-                <button className="btn-save-plan" onClick={handleSavePlan}>Save Plan</button>
-              )}
-              <button className="btn-danger-sm" onClick={confirmClear}>Clear Week</button>
             </>
           )}
+          {clearMode && selectedSlots.size > 0 && (
+            <button className="btn-danger-sm" onClick={handleClearSelected}>
+              Clear {selectedSlots.size} slot{selectedSlots.size !== 1 ? 's' : ''}
+            </button>
+          )}
+          {activeTab === 'calendar' && hasAnyMeals && !clearMode && (
+            <button className="btn-ghost-sm" onClick={openSaveTemplateModal}>Save as Template</button>
+          )}
         </div>
-        {planId && activeTab === 'calendar' && <div className="mp-save-tmpl-row">
-          <input
-            className="mp-save-tmpl-input"
-            placeholder="Save this week as a template..."
-            value={templateName}
-            onChange={e => setTemplateName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
-          />
-          <button className="btn-ghost-sm" onClick={handleSaveTemplate} disabled={savingTemplate}>
-            {savingTemplate ? 'Saving...' : 'Save Template'}
-          </button>
-        </div>}
-
-        {!(planId || planId2) && !loading && (
-          <p className="mp-past-note">
-            {toISO(addDays(startDate, 6)) < todayIso
-              ? 'This is a past week with no saved meal plan.'
-              : 'No plan yet for this week — drop or select a recipe to start one.'}
-          </p>
-        )}
       </div>
-
-      {/* Week nudge banner — shown once when a new plan is first started */}
-      {showWeekNudge && (
-        <div className="week-nudge-banner">
-          <span className="week-nudge-icon">📅</span>
-          <div className="week-nudge-text">
-            <strong>Plan started for {fmtRange(startDate)}</strong>
-            <span>The highlighted days are all part of this week&rsquo;s plan &mdash; try to fill in all 7 days for the best meal prep experience!</span>
-          </div>
-          <button className="week-nudge-close" onClick={() => setShowWeekNudge(false)} title="Dismiss">×</button>
-        </div>
-      )}
 
       {/* Apply-all banner */}
       {applyAllMode && (
         <div className="apply-all-banner">
-          Click on a day column in the calendar to apply all suggestions to that day.
+          Click on a day column to apply all suggestions to that day.
           <button className="apply-all-cancel" onClick={() => setApplyAllMode(false)}>Cancel</button>
         </div>
       )}
@@ -988,14 +809,23 @@ export default function MealPlanner() {
         </div>
       )}
 
-      {/* Tabs — always visible so calendar shows even before a plan is created */}
+      {/* Clear-mode banner */}
+      {clearMode && (
+        <div className="apply-all-banner">
+          Click individual slots to select them, or click a date header to select all 3 slots for that day.
+          {selectedSlots.size > 0 && <strong> {selectedSlots.size} selected.</strong>}
+          <button className="apply-all-cancel" onClick={() => { setClearMode(false); setSelectedSlots(new Set()); }}>Cancel</button>
+        </div>
+      )}
+
+      {/* Tabs */}
       <div className="mp-tabs">
         {TABS.map(t => (
           <button key={t} className={'mp-tab' + (activeTab === t ? ' active' : '')} onClick={() => handleTabClick(t)}>
             {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
+          </button>
+        ))}
+      </div>
 
       {/* ── CALENDAR TAB ─────────────────────────────────────────────────────── */}
       {activeTab === 'calendar' && (
@@ -1011,10 +841,7 @@ export default function MealPlanner() {
                     <button
                       key={idx}
                       className={'sugg-option-tab' + (activeSuggOption === idx ? ' active' : '')}
-                      onClick={() => {
-                        setActiveSuggOption(idx);
-                        setSuggestions(suggestionOptions[idx]?.meals || []);
-                      }}
+                      onClick={() => { setActiveSuggOption(idx); setSuggestions(suggestionOptions[idx]?.meals || []); }}
                     >
                       Option {opt.option_number ?? (idx + 1)}
                     </button>
@@ -1032,12 +859,8 @@ export default function MealPlanner() {
                       onDoubleClick={() => handleRecipeSelect(s)}
                     >
                       <span className="chip-title">{title}</span>
-                      {s.day_of_week && <span className="chip-day">{s.day_of_week.slice(0,3)} · {MEAL_LABELS[s.meal_type] || s.meal_type}</span>}
-                      <button
-                        className="chip-apply"
-                        title="Select to place in calendar"
-                        onClick={() => handleRecipeSelect(s)}
-                      >+</button>
+                      {s.day_of_week && <span className="chip-day">{s.day_of_week.slice(0,3)} &middot; {MEAL_LABELS[s.meal_type] || s.meal_type}</span>}
+                      <button className="chip-apply" title="Select to place in calendar" onClick={() => handleRecipeSelect(s)}>+</button>
                     </div>
                   );
                 })}
@@ -1045,7 +868,7 @@ export default function MealPlanner() {
             </div>
           )}
 
-          {/* Calendar */}
+          {/* Calendar grid */}
           <div className="calendar-scroll">
             {loading && <div className="calendar-loading">Loading...</div>}
             <table className="calendar">
@@ -1053,23 +876,27 @@ export default function MealPlanner() {
                 <tr>
                   <th className="cal-label-col" />
                   {weekDays.map((date, i) => {
-                    const iso     = toISO(date);
-                    const isPast  = iso < todayIso;
-                    const dayMon  = toISO(date);
-                    // Show a plan-start dot on whichever column is the start of a loaded plan
-                    const isPlanStart = iso in planCacheRef.current;
+                    const iso    = toISO(date);
+                    const isPast = iso < todayIso;
+                    const dayKeys        = MEAL_TYPES.map(t => iso + '-' + t);
+                    const allDaySelected = clearMode && dayKeys.every(k => selectedSlots.has(k));
                     return (
                       <th
                         key={i}
-                        className={
-                          'cal-day-header' +
-                          ((planId || planId2) ? ' col-in-plan' : '') +
-                          (iso === todayIso ? ' today' : '') +
-                          (isPast ? ' past' : '') +
-                          (applyAllMode && !isPast ? ' apply-target' : '')
-                        }
-                        onClick={() => applyAllMode && !isPast && handleApplyAllToDay(date)}
-                        style={applyAllMode && !isPast ? { cursor: 'pointer' } : undefined}
+                        className={[
+                          'cal-day-header',
+                          hasAnyMeals     ? 'col-in-plan'      : '',
+                          iso === todayIso ? 'today'            : '',
+                          isPast          ? 'past'             : '',
+                          applyAllMode && !isPast ? 'apply-target'   : '',
+                          clearMode       ? 'clear-mode-header' : '',
+                          allDaySelected  ? 'day-all-selected'  : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => {
+                          if (applyAllMode && !isPast) handleApplyAllToDay(date);
+                          else if (clearMode)          toggleDaySelection(iso);
+                        }}
+                        style={(applyAllMode && !isPast) || clearMode ? { cursor: 'pointer' } : undefined}
                       >
                         <span className="day-name">{dayName(date).slice(0, 3)}</span>
                         <span className="day-date">{toShort(date)}</span>
@@ -1084,46 +911,54 @@ export default function MealPlanner() {
                   <tr key={type} className={'cal-row cal-row--' + type}>
                     <td className="cal-row-label">{MEAL_LABELS[type]}</td>
                     {weekDays.map((date, di) => {
-                      const day     = dayName(date);
-                      const iso     = toISO(date);
-                      const key     = iso + '-' + type;
-                      const slot    = slotMap[key];
-                      const isPast  = iso < todayIso;
-                      const isOver  = dragOver === key;
+                      const iso    = toISO(date);
+                      const key    = iso + '-' + type;
+                      const slot   = slotMap[key];
+                      const isPast = iso < todayIso;
+                      const isOver     = dragOver === key;
+                      const isSelected = clearMode && selectedSlots.has(key);
                       return (
                         <td
                           key={di}
                           className={[
                             'cal-slot',
-                            (planId || planId2) ? 'col-in-plan' : '',
-                            slot   ? 'has-meal' : 'empty',
-                            isPast ? 'past-slot' : '',
+                            hasAnyMeals ? 'col-in-plan' : '',
+                            slot   ? 'has-meal'   : 'empty',
+                            isPast ? 'past-slot'  : '',
                             isOver && !isPast ? 'drag-over' : '',
                             selectedRecipe && !isPast ? 'click-target' : '',
+                            isSelected ? 'slot-clear-selected' : '',
                           ].filter(Boolean).join(' ')}
-                          onDragOver={e => { if (!isPast) { e.preventDefault(); setDragOver(key); } }}
+                          onDragOver={e => { if (!isPast && !clearMode) { e.preventDefault(); setDragOver(key); } }}
                           onDragLeave={() => setDragOver(null)}
-                          onDrop={e => { if (!isPast) handleDrop(e, day, type, date); }}
-                          onClick={e => { if (selectedRecipe && !isPast) handleSlotClick(date, day, type, e); }}
-                          style={selectedRecipe && !isPast ? { cursor: 'crosshair' } : undefined}
+                          onDrop={e => { if (!isPast && !clearMode) handleDrop(e, iso, type); }}
+                          onClick={e => {
+                            if (clearMode)                       { toggleSlotSelection(key); return; }
+                            if (selectedRecipe && !isPast)       handleSlotClick(iso, type, e);
+                          }}
+                          style={(selectedRecipe && !isPast) || clearMode ? { cursor: 'crosshair' } : undefined}
                         >
                           {slot ? (
                             <div
                               className={'slot-content' + (slot.isCooked ? ' slot-cooked' : '')}
-                              draggable={!isPast && !slot.isCooked}
-                              onDragStart={!isPast && !slot.isCooked ? e => handleSlotDragStart(e, date, day, type) : undefined}
+                              draggable={!isPast && !slot.isCooked && !clearMode}
+                              onDragStart={!isPast && !slot.isCooked && !clearMode
+                                ? e => handleSlotDragStart(e, iso, type)
+                                : undefined}
                             >
                               {slot.isCooked && <span className="slot-cooked-badge">&#10003; Cooked</span>}
                               <span className="slot-title">{slot.title}</span>
-                              {!isPast && !slot.isCooked && (
+                              {!isPast && !slot.isCooked && !clearMode && (
                                 <div className="slot-actions">
-                                  <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(date, day, type, e)}>Cook</button>
-                                  <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(date, day, type, e)}>×</button>
+                                  <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(iso, type, e)}>Cook</button>
+                                  <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(iso, type, e)}>&#215;</button>
                                 </div>
                               )}
                             </div>
                           ) : !isPast ? (
-                            <span className="slot-drop-hint">{selectedRecipe ? 'Click to place' : 'Drop here'}</span>
+                            <span className="slot-drop-hint">
+                              {clearMode ? '' : selectedRecipe ? 'Click to place' : 'Drop here'}
+                            </span>
                           ) : null}
                         </td>
                       );
@@ -1134,83 +969,86 @@ export default function MealPlanner() {
             </table>
           </div>
 
-          <p className="mp-drag-hint">
-            Drag recipes into the calendar, or <strong>double-click</strong> a recipe to select it then click a slot to place it.
-          </p>
+          {!clearMode && (
+            <p className="mp-drag-hint">
+              Drag recipes into the calendar, or <strong>double-click</strong> a recipe to select it then click a slot to place it.
+            </p>
+          )}
 
           {/* Recipe list */}
-          <div className="mp-recipe-list-section">
-            <div className="mp-recipe-list-header">
-              <input
-                className="mp-recipe-search"
-                type="text"
-                placeholder="Search recipes..."
-                value={recipeSearch}
-                onChange={e => setRecipeSearch(e.target.value)}
-              />
-              <div className="mp-recipe-toggles">
-                {RECIPE_VIEWS.map(v => (
-                  <button
-                    key={v}
-                    className={'mp-toggle-btn' + (recipeView === v ? ' active' : '')}
-                    onClick={() => setRecipeView(v)}
-                  >
-                    {RECIPE_VIEW_LABELS[v]}
-                  </button>
-                ))}
+          {!clearMode && (
+            <div className="mp-recipe-list-section">
+              <div className="mp-recipe-list-header">
+                <input
+                  className="mp-recipe-search"
+                  type="text"
+                  placeholder="Search recipes..."
+                  value={recipeSearch}
+                  onChange={e => setRecipeSearch(e.target.value)}
+                />
+                <div className="mp-recipe-toggles">
+                  {RECIPE_VIEWS.map(v => (
+                    <button
+                      key={v}
+                      className={'mp-toggle-btn' + (recipeView === v ? ' active' : '')}
+                      onClick={() => setRecipeView(v)}
+                    >
+                      {RECIPE_VIEW_LABELS[v]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {recipeLoading && <p className="mp-recipe-loading">Loading recipes...</p>}
+              {!recipeLoading && recipeList.length === 0 && (
+                <p className="mp-recipe-empty">No recipes found.</p>
+              )}
+
+              <div className="mp-recipe-list">
+                {recipeList.map(recipe => {
+                  const p   = recipe.nutrition?.protein_g || recipe.protein_g;
+                  const c   = recipe.nutrition?.carbs_g   || recipe.carbs_g;
+                  const cal = recipe.nutrition?.calories  || recipe.calories;
+                  const isSelected = selectedRecipe?.recipeId === recipe.recipe_id;
+                  return (
+                    <div
+                      key={recipe.recipe_id}
+                      className={'mp-recipe-card' + (isSelected ? ' recipe-selected' : '')}
+                      draggable
+                      onDragStart={e => handleDragStart(e, recipe, null)}
+                      onDoubleClick={() => handleRecipeSelect(recipe)}
+                      title="Double-click to select, then click a calendar slot to place"
+                    >
+                      <span className="mp-drag-handle">&#x2630;</span>
+                      <div className="mp-recipe-card-info">
+                        <span className="mp-recipe-title">{recipe.title}</span>
+                        <div className="mp-recipe-meta">
+                          {recipe.difficulty && (
+                            <span className={'badge badge-diff badge-' + recipe.difficulty.toLowerCase()}>{recipe.difficulty}</span>
+                          )}
+                          {recipeView === 'protein' && p  && <span className="mp-macro-tag">{Math.round(p)}g prot</span>}
+                          {recipeView === 'carbs'   && c  && <span className="mp-macro-tag">{Math.round(c)}g carbs</span>}
+                          {cal && <span className="mp-macro-tag">{Math.round(cal)} kcal</span>}
+                        </div>
+                      </div>
+                      <button
+                        className={'fav-btn' + (recipe.is_favourite ? ' faved' : '')}
+                        onClick={e => handleFavourite(e, recipe.recipe_id)}
+                        title={recipe.is_favourite ? 'Unsave' : 'Save'}
+                      >
+                        {recipe.is_favourite ? '\u2665' : '\u2661'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            {recipeLoading && <p className="mp-recipe-loading">Loading recipes...</p>}
-            {!recipeLoading && recipeList.length === 0 && (
-              <p className="mp-recipe-empty">No recipes found.</p>
-            )}
-
-            <div className="mp-recipe-list">
-              {recipeList.map(recipe => {
-                const p   = recipe.nutrition?.protein_g || recipe.protein_g;
-                const c   = recipe.nutrition?.carbs_g   || recipe.carbs_g;
-                const cal = recipe.nutrition?.calories  || recipe.calories;
-                const isSelected = selectedRecipe?.recipeId === recipe.recipe_id;
-                return (
-                  <div
-                    key={recipe.recipe_id}
-                    className={'mp-recipe-card' + (isSelected ? ' recipe-selected' : '')}
-                    draggable
-                    onDragStart={e => handleDragStart(e, recipe, null)}
-                    onDoubleClick={() => handleRecipeSelect(recipe)}
-                    title="Double-click to select, then click a calendar slot to place"
-                  >
-                    <span className="mp-drag-handle">&#x2630;</span>
-                    <div className="mp-recipe-card-info">
-                      <span className="mp-recipe-title">{recipe.title}</span>
-                      <div className="mp-recipe-meta">
-                        {recipe.difficulty && (
-                          <span className={'badge badge-diff badge-' + recipe.difficulty.toLowerCase()}>{recipe.difficulty}</span>
-                        )}
-                        {recipeView === 'protein' && p  && <span className="mp-macro-tag">{Math.round(p)}g prot</span>}
-                        {recipeView === 'carbs'   && c  && <span className="mp-macro-tag">{Math.round(c)}g carbs</span>}
-                        {cal && <span className="mp-macro-tag">{Math.round(cal)} kcal</span>}
-                      </div>
-                    </div>
-                    <button
-                      className={'fav-btn' + (recipe.is_favourite ? ' faved' : '')}
-                      onClick={e => handleFavourite(e, recipe.recipe_id)}
-                      title={recipe.is_favourite ? 'Unsave' : 'Save'}
-                    >
-                      {recipe.is_favourite ? '\u2665' : '\u2661'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
       {/* ── NUTRITION TAB ────────────────────────────────────────────────────── */}
       {activeTab === 'nutrition' && (() => {
-        // ── helpers ────────────────────────────────────────────────────────────
         function sumNut(meals) {
           return meals.reduce((a, m) => ({
             calories: a.calories + (m.nutrition?.calories || 0),
@@ -1230,47 +1068,31 @@ export default function MealPlanner() {
             { label: 'Fat',     pct: (fc / t) * 100, color: '#e8a050', grams: Math.round(totals.fat)     },
           ];
         }
-
-        // ── data: cooked vs full plan ──────────────────────────────────────────
         const allSlots    = Object.values(slotMap);
         const cookedSlots = allSlots.filter(s => s.isCooked);
         const cookedTotal = sumNut(cookedSlots);
         const planTotal   = sumNut(allSlots);
         const cookedSlices = buildSlices(cookedTotal);
         const planSlices   = buildSlices(planTotal);
-
         const hasPlanData   = allSlots.length > 0 && planTotal.calories > 0;
         const hasCookedData = cookedSlots.length > 0 && cookedTotal.calories > 0;
-
-        // ── per-day breakdown (current week's plan) ────────────────────────────
-        const nutTodayIso = toISO(today0());
         const nutDays = weekDays.map(date => {
-          const day  = dayName(date);
           const iso  = toISO(date);
           const meals = MEAL_TYPES
             .map(type => { const s = slotMap[iso + '-' + type]; return s ? { type, title: s.title, nutrition: s.nutrition || {}, isCooked: s.isCooked } : null; })
             .filter(Boolean);
           const total = sumNut(meals.map(m => ({ nutrition: m.nutrition })));
-          return { date, day, iso, isToday: iso === nutTodayIso, isPast: iso < nutTodayIso, meals, total };
+          return { date, iso, isToday: iso === todayIso, isPast: iso < todayIso, meals, total };
         });
-
         return (
           <div className="mp-tab-content">
-
-            {/* ── Two donut charts ─────────────────────────────────────────── */}
             <div className="nut-dual-row">
-
-              {/* Chart 1 — Cooked so far */}
               <div className="nut-chart-card">
                 <div className="nut-chart-header">
                   <h3 className="nut-chart-title">Cooked So Far</h3>
                   <span className="nut-chart-sub">{cookedSlots.length} meal{cookedSlots.length !== 1 ? 's' : ''} cooked this week</span>
                 </div>
-                <DonutChart
-                  slices={cookedSlices}
-                  centerLabel={hasCookedData ? Math.round(cookedTotal.calories) : '–'}
-                  centerSub="kcal"
-                />
+                <DonutChart slices={cookedSlices} centerLabel={hasCookedData ? Math.round(cookedTotal.calories) : '\u2013'} centerSub="kcal" />
                 {hasCookedData ? (
                   <div className="nut-chart-legend">
                     {cookedSlices.map(s => (
@@ -1286,18 +1108,12 @@ export default function MealPlanner() {
                   <p className="nut-chart-empty">Mark meals as cooked to track progress</p>
                 )}
               </div>
-
-              {/* Chart 2 — Full week plan */}
               <div className="nut-chart-card">
                 <div className="nut-chart-header">
                   <h3 className="nut-chart-title">This Week&rsquo;s Plan</h3>
                   <span className="nut-chart-sub">{allSlots.length} meal{allSlots.length !== 1 ? 's' : ''} planned</span>
                 </div>
-                <DonutChart
-                  slices={planSlices}
-                  centerLabel={hasPlanData ? Math.round(planTotal.calories) : '–'}
-                  centerSub="kcal"
-                />
+                <DonutChart slices={planSlices} centerLabel={hasPlanData ? Math.round(planTotal.calories) : '\u2013'} centerSub="kcal" />
                 {hasPlanData ? (
                   <div className="nut-chart-legend">
                     {planSlices.map(s => (
@@ -1310,34 +1126,24 @@ export default function MealPlanner() {
                     ))}
                   </div>
                 ) : (
-                  <p className="nut-chart-empty">
-                    {planId ? 'Add recipes with nutrition data to your plan' : 'No plan for this week yet'}
-                  </p>
+                  <p className="nut-chart-empty">Add recipes with nutrition data to your plan</p>
                 )}
               </div>
             </div>
 
-            {/* ── Per-day breakdown ─────────────────────────────────────────── */}
-            {(allSlots.length > 0) && (
+            {allSlots.length > 0 && (
               <>
                 <h3 className="nut-day-section-title">Daily Breakdown</h3>
                 <div className="nut-days">
                   {nutDays.map(d => (
                     <div
                       key={d.iso}
-                      className={[
-                        'nut-day-row',
-                        !d.meals.length ? 'nut-day-empty' : '',
-                        d.isToday ? 'nut-day-today' : '',
-                        d.isPast && !d.meals.length ? 'nut-day-missed' : '',
-                      ].filter(Boolean).join(' ')}
+                      className={['nut-day-row', !d.meals.length ? 'nut-day-empty' : '', d.isToday ? 'nut-day-today' : '', d.isPast && !d.meals.length ? 'nut-day-missed' : ''].filter(Boolean).join(' ')}
                     >
                       <div className="nut-day-head">
-                        <span className="nut-day-name">{d.day.slice(0, 3)} {toShort(d.date)}</span>
+                        <span className="nut-day-name">{dayName(d.date).slice(0,3)} {toShort(d.date)}</span>
                         {d.meals.length > 0 ? (
-                          <span className="nut-day-cal">
-                            {d.total.calories > 0 ? Math.round(d.total.calories) + ' kcal' : 'No calorie data'}
-                          </span>
+                          <span className="nut-day-cal">{d.total.calories > 0 ? Math.round(d.total.calories) + ' kcal' : 'No calorie data'}</span>
                         ) : (
                           <span className="nut-day-status">{d.isPast ? 'Missed' : 'No meals yet'}</span>
                         )}
@@ -1363,20 +1169,19 @@ export default function MealPlanner() {
                 </div>
               </>
             )}
-
-            {!planId && (
+            {allSlots.length === 0 && (
               <div className="empty-state" style={{ marginTop: 24 }}>
-                <p className="empty-state-title">No plan this week</p>
+                <p className="empty-state-title">No meals this week</p>
                 <p className="empty-state-body">Add meals to your calendar to see nutrition data here.</p>
               </div>
             )}
           </div>
         );
       })()}
+
       {/* ── TEMPLATES TAB ────────────────────────────────────────────────────── */}
       {activeTab === 'templates' && (
         <div className="mp-tab-content">
-          
           <div className="templates-list-section">
             <h3 className="templates-list-title">Saved Templates</h3>
             {templatesLoading && <p className="tab-section-sub">Loading...</p>}
@@ -1397,7 +1202,7 @@ export default function MealPlanner() {
                 </div>
                 <div className="template-row-actions">
                   <button className="btn-ghost-sm" onClick={() => setViewTmplModal({ name: t.name, meals: t.meals || [] })}>View</button>
-                  <button className="btn-primary-sm" onClick={() => handleLoadTemplate(t.template_id, t.name)}>Load</button>
+                  <button className="btn-primary-sm" onClick={() => handleLoadTemplate(t)}>Load</button>
                   <button className="btn-danger-sm" onClick={() => confirmDeleteTemplate(t.template_id, t.name)}>Delete</button>
                 </div>
               </div>
@@ -1406,92 +1211,166 @@ export default function MealPlanner() {
         </div>
       )}
 
-      {/* ── LOAD TEMPLATE MODAL ─────────────────────────────────────────────── */}
+      {/* ── SAVE TEMPLATE MODAL ──────────────────────────────────────────────── */}
+      {saveTmplModal && (
+        <div className="modal-overlay" onClick={() => !savingTemplate && setSaveTmplModal(false)}>
+          <div className="shop-modal" onClick={e => e.stopPropagation()} style={{ width: 'fit-content', minWidth: 420, maxWidth: '94vw' }}>
+            <div className="shop-modal-head">
+              <h2 className="shop-modal-title">Save as Template</h2>
+              <button className="mp-modal-close" onClick={() => setSaveTmplModal(false)} disabled={savingTemplate}>&#215;</button>
+            </div>
+            <p className="shop-modal-sub">Choose which days to include. Click to toggle · Drag chip-to-chip to range-select · Drag chip to reorder.</p>
+            <input
+              className="mp-save-tmpl-input"
+              placeholder="Template name..."
+              value={saveTmplName}
+              onChange={e => setSaveTmplName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
+              style={{ marginBottom: 8 }}
+            />
+
+            {/* Day chip picker */}
+            <div className="tmpl-day-picker" style={{ userSelect: 'none' }}>
+              {saveTmplOrder.map((dayViewIdx, posIdx) => {
+                const date      = weekDays[dayViewIdx];
+                const iso       = toISO(date);
+                const mealCount = MEAL_TYPES.filter(t => slotMap[iso + '-' + t]).length;
+                const inDrag    = saveTmplDragRange && posIdx >= saveTmplDragRange.lo && posIdx <= saveTmplDragRange.hi;
+                return (
+                  <div
+                    key={dayViewIdx}
+                    className={[
+                      'tmpl-day-chip',
+                      saveTmplDays.has(dayViewIdx) ? 'selected' : '',
+                      inDrag                        ? 'drag-highlight' : '',
+                      mealCount === 0               ? 'no-meals' : '',
+                      saveTmplSwapRef.current.dragIdx === posIdx ? 'swapping' : '',
+                    ].filter(Boolean).join(' ')}
+                    draggable
+                    onDragStart={(e => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(posIdx));
+                      saveTmplSwapRef.current = { active: true, dragIdx: posIdx };
+                    })}
+                    onDragOver={(e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; })}
+                    onDrop={(e => {
+                      e.preventDefault();
+                      const fromPos = Number(e.dataTransfer.getData('text/plain'));
+                      if (fromPos === posIdx) return;
+                      setSaveTmplOrder(prev => {
+                        const next = [...prev];
+                        const [moved] = next.splice(fromPos, 1);
+                        next.splice(posIdx, 0, moved);
+                        return next;
+                      });
+                      saveTmplSwapRef.current = { active: false, dragIdx: null };
+                    })}
+                    onMouseDown={(e => {
+                      e.preventDefault();
+                      saveTmplDragRef.current = { active: true, start: posIdx, end: posIdx };
+                      setSaveTmplDragRange({ lo: posIdx, hi: posIdx });
+                    })}
+                    onMouseEnter={(() => {
+                      if (!saveTmplDragRef.current.active) return;
+                      saveTmplDragRef.current.end = posIdx;
+                      const lo = Math.min(saveTmplDragRef.current.start, posIdx);
+                      const hi = Math.max(saveTmplDragRef.current.start, posIdx);
+                      setSaveTmplDragRange({ lo, hi });
+                    })}
+                  >
+                    <span className="tmpl-day-chip-name">{dayName(date).slice(0, 3)}</span>
+                    <span className="tmpl-day-chip-date">{toShort(date)}</span>
+                    {mealCount > 0 ? (
+                      <span className="tmpl-day-chip-count">{mealCount} meal{mealCount !== 1 ? 's' : ''}</span>
+                    ) : (
+                      <span className="tmpl-day-chip-empty">empty</span>
+                    )}
+                  </div>
+                );
+              })}
+
+            </div>
+
+            <div className="shop-modal-footer">
+              <button className="btn-ghost-sm" onClick={() => setSaveTmplModal(false)} disabled={savingTemplate}>Cancel</button>
+              <button className="btn-primary-sm" onClick={handleSaveTemplate} disabled={savingTemplate || !saveTmplDays.size}>
+                {savingTemplate ? 'Saving...' : 'Save Template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LOAD TEMPLATE MODAL ──────────────────────────────────────────────── */}
       {loadTmplModal && (
         <div className="modal-overlay" onClick={() => !loadTmplWorking && setLoadTmplModal(null)}>
           <div className="shop-modal tmpl-load-modal" onClick={e => e.stopPropagation()}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">Load: {loadTmplModal.name}</h2>
-              <button className="mp-modal-close" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}>×</button>
+              <button className="mp-modal-close" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}>&#215;</button>
             </div>
 
-            {/* Date picker row */}
             <div className="tmpl-load-date-row">
-              <label className="shop-modal-sub" style={{ display: 'block', marginBottom: 6 }}>
-                Starting date (template fills 7 days from this date)
-              </label>
+              <label className="shop-modal-sub" style={{ display: 'block', marginBottom: 6 }}>Starting date</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <input
                   type="date"
                   className="form-input"
-                  value={loadTmplWeekStart}
+                  value={loadTmplStartDate}
                   onChange={e => handleLoadTmplDateChange(e.target.value)}
                   style={{ flex: 1 }}
                 />
-                {loadTmplWeekStart !== toISO(today0()) && (
+                {loadTmplStartDate !== toISO(today0()) && (
                   <button className="btn-today" onClick={() => handleLoadTmplDateChange(toISO(today0()))}>Today</button>
                 )}
               </div>
-              {loadTmplWeekStart && (
+              {loadTmplStartDate && loadTmplArrangement.length > 0 && (
                 <p className="shop-modal-sub" style={{ marginTop: 6 }}>
                   Fills: <strong>
-                    {toShort(new Date(loadTmplWeekStart + 'T00:00:00'))} &ndash; {
-                      toShort(addDays(new Date(loadTmplWeekStart + 'T00:00:00'), 6))
-                    }, {new Date(loadTmplWeekStart + 'T00:00:00').getFullYear()}
+                    {toShort(new Date(loadTmplStartDate + 'T00:00:00'))} &ndash; {toShort(addDays(new Date(loadTmplStartDate + 'T00:00:00'), loadTmplArrangement.length - 1))}
                   </strong>
                 </p>
               )}
-              {loadTmplExisting && (
-                <div className="tmpl-conflict-box" style={{ marginTop: 8 }}>
-                  <span className="tmpl-conflict-msg">⚠️ A meal plan already exists for some of these days.</span>
-                  <div className="tmpl-conflict-actions">
-                    <button className="btn-ghost-sm" onClick={handleGoToExistingPlan} disabled={loadTmplWorking}>
-                      Go to existing plan
-                    </button>
-                    <button className="btn-danger-sm" onClick={handleRemoveConflictingPlans} disabled={loadTmplWorking}>
-                      Remove existing plan
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* Day arrangement */}
-            {tmplArrangement.length > 0 && (
-              <>
-                <p className="tmpl-arrange-hint">
-                  Drag days to reorder. The date for each slot updates automatically.
-                </p>
+            {/* Conflict calendar with drag-to-reorder */}
+            {loadTmplStartDate && loadTmplArrangement.length > 0 && (
+              <div className="tmpl-conflict-calendar">
+                {loadTmplConflicts.size > 0 && (
+                  <p className="shop-modal-sub" style={{ marginBottom: 8 }}>
+                    <span className="tmpl-conflict-badge" style={{ marginRight: 4 }}>&#9888;</span>
+                    {loadTmplConflicts.size} date{loadTmplConflicts.size !== 1 ? 's' : ''} will be overwritten. Drag days to reorder if needed.
+                  </p>
+                )}
                 <div className="tmpl-arrange-list">
-                  {tmplArrangement.map((slot, idx) => {
-                    // Show actual date: chosenDate + slot index (positional)
-                    const slotDate = loadTmplWeekStart && slot
-                      ? addDays(new Date(loadTmplWeekStart + 'T00:00:00'), idx)
-                      : loadTmplWeekStart
-                        ? addDays(new Date(loadTmplWeekStart + 'T00:00:00'), idx)
-                        : null;
+                  {loadTmplArrangement.map((slot, idx) => {
+                    const dateISO   = loadTmplStartDate ? toISO(addDays(new Date(loadTmplStartDate + 'T00:00:00'), idx)) : null;
+                    const slotDate  = dateISO ? new Date(dateISO + 'T00:00:00') : null;
+                    const hasConflict = dateISO && loadTmplConflicts.has(dateISO);
                     return (
                       <div
                         key={idx}
-                        className={`tmpl-slot${tmplDragIdx === idx ? ' tmpl-slot--dragging' : ''}`}
+                        className={['tmpl-slot', loadTmplDragIdx === idx ? 'tmpl-slot--dragging' : '', hasConflict ? 'tmpl-slot--conflict' : ''].filter(Boolean).join(' ')}
                         draggable
-                        onDragStart={() => setTmplDragIdx(idx)}
+                        onDragStart={() => setLoadTmplDragIdx(idx)}
                         onDragOver={e => e.preventDefault()}
                         onDrop={() => {
-                          if (tmplDragIdx === null || tmplDragIdx === idx) { setTmplDragIdx(null); return; }
-                          const arr = [...tmplArrangement];
-                          [arr[tmplDragIdx], arr[idx]] = [arr[idx], arr[tmplDragIdx]];
-                          setTmplArrangement(arr);
-                          setTmplDragIdx(null);
+                          if (loadTmplDragIdx === null || loadTmplDragIdx === idx) { setLoadTmplDragIdx(null); return; }
+                          const arr = [...loadTmplArrangement];
+                          [arr[loadTmplDragIdx], arr[idx]] = [arr[idx], arr[loadTmplDragIdx]];
+                          setLoadTmplArrangement(arr);
+                          if (loadTmplStartDate) setLoadTmplConflicts(computeLoadConflicts(loadTmplStartDate, arr));
+                          setLoadTmplDragIdx(null);
                         }}
-                        onDragEnd={() => setTmplDragIdx(null)}
+                        onDragEnd={() => setLoadTmplDragIdx(null)}
                       >
-                        <div className="tmpl-slot-handle">⠿</div>
+                        <div className="tmpl-slot-handle">&#8942;&#8942;</div>
                         <div className="tmpl-slot-date-col">
                           {slotDate && (
                             <>
                               <span className="tmpl-slot-dow">{slotDate.toLocaleDateString('en-US', { weekday: 'short' })}</span>
                               <span className="tmpl-slot-mday">{toShort(slotDate)}</span>
+                              {hasConflict && <span className="tmpl-conflict-badge">&#9888;</span>}
                             </>
                           )}
                         </div>
@@ -1499,7 +1378,7 @@ export default function MealPlanner() {
                           {slot ? (
                             slot.meals.map((m, mi) => (
                               <div key={mi} className="tmpl-slot-meal">
-                                <span className={`nut-meal-tag nut-meal-tag--${m.meal_type}`}>
+                                <span className={'nut-meal-tag nut-meal-tag--' + m.meal_type}>
                                   {MEAL_LABELS[m.meal_type] || m.meal_type}
                                 </span>
                                 <span className="tmpl-slot-recipe">{m.recipe_title || ('Recipe #' + m.recipe_id)}</span>
@@ -1513,9 +1392,9 @@ export default function MealPlanner() {
                     );
                   })}
                 </div>
-              </>
+              </div>
             )}
-            {tmplArrangement.length === 0 && (
+            {loadTmplArrangement.length === 0 && (
               <p className="shop-modal-sub" style={{ padding: '8px 0 12px' }}>This template has no meals.</p>
             )}
 
@@ -1524,45 +1403,46 @@ export default function MealPlanner() {
               <button
                 className="btn-primary-sm"
                 onClick={confirmLoadTemplate}
-                disabled={loadTmplWorking || !loadTmplWeekStart || tmplArrangement.length === 0 || loadTmplExisting}
-                title={loadTmplExisting ? 'Resolve the existing plan conflict first' : undefined}
+                disabled={loadTmplWorking || !loadTmplStartDate || !loadTmplArrangement.length}
               >
-                {loadTmplWorking ? 'Applying...' : 'Apply to Week'}
+                {loadTmplWorking ? 'Applying...' : 'Apply Template'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── VIEW TEMPLATE MODAL ─────────────────────────────────────────────── */}
+      {/* ── VIEW TEMPLATE MODAL ──────────────────────────────────────────────── */}
       {viewTmplModal && (
         <div className="modal-overlay" onClick={() => setViewTmplModal(null)}>
           <div className="shop-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">{viewTmplModal.name}</h2>
-              <button className="mp-modal-close" onClick={() => setViewTmplModal(null)}>x</button>
+              <button className="mp-modal-close" onClick={() => setViewTmplModal(null)}>&#215;</button>
             </div>
             {viewTmplModal.meals.length === 0 ? (
               <p className="shop-modal-sub" style={{ padding: '16px 0' }}>This template has no meals.</p>
             ) : (
               <div className="view-tmpl-body">
-                {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(day => {
-                  const dayMeals = viewTmplModal.meals.filter(m => m.day_of_week === day);
-                  if (!dayMeals.length) return null;
-                  return (
-                    <div key={day} className="view-tmpl-day">
-                      <div className="view-tmpl-day-name">{day}</div>
-                      {dayMeals.map((m, i) => (
+                {(() => {
+                  const groups = {};
+                  for (const m of viewTmplModal.meals) {
+                    const idx = m.day_index ?? 0;
+                    if (!groups[idx]) groups[idx] = [];
+                    groups[idx].push(m);
+                  }
+                  return Object.keys(groups).sort((a, b) => Number(a) - Number(b)).map(idx => (
+                    <div key={idx} className="view-tmpl-day">
+                      <div className="view-tmpl-day-name">Day {Number(idx) + 1}</div>
+                      {groups[idx].map((m, i) => (
                         <div key={i} className="view-tmpl-meal">
-                          <span className={'nut-meal-tag nut-meal-tag--' + m.meal_type}>
-                            {MEAL_LABELS[m.meal_type] || m.meal_type}
-                          </span>
+                          <span className={'nut-meal-tag nut-meal-tag--' + m.meal_type}>{MEAL_LABELS[m.meal_type] || m.meal_type}</span>
                           <span className="view-tmpl-recipe">{m.recipe_title || ('Recipe #' + m.recipe_id)}</span>
                         </div>
                       ))}
                     </div>
-                  );
-                })}
+                  ));
+                })()}
               </div>
             )}
             <div className="shop-modal-footer">
@@ -1578,18 +1458,15 @@ export default function MealPlanner() {
           <div className="shop-modal" onClick={e => e.stopPropagation()}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">Generate Shopping List</h2>
-              <button className="mp-modal-close" onClick={() => setShopModal(false)}>x</button>
+              <button className="mp-modal-close" onClick={() => setShopModal(false)}>&#215;</button>
             </div>
             <p className="shop-modal-sub">
               Select the ingredients you need to buy, then generate your shopping list.
-              Items already in your pantry are pre-checked.
             </p>
-
             {shopLoading && <p className="shop-modal-loading">Loading missing ingredients...</p>}
             {!shopLoading && shopItems.length === 0 && (
               <p className="shop-modal-empty">Your pantry covers everything in this plan!</p>
             )}
-
             {shopItems.length > 0 && (
               <div className="shop-modal-items">
                 {shopItems.map((item, idx) => (
@@ -1606,7 +1483,6 @@ export default function MealPlanner() {
                 ))}
               </div>
             )}
-
             {shopItems.length > 0 && (
               <div className="shop-modal-footer">
                 <span className="shop-selected-count">
@@ -1632,7 +1508,7 @@ export default function MealPlanner() {
           title={confirmAction.title}
           message={confirmAction.message}
           confirmLabel={confirmAction.confirmLabel || 'Confirm'}
-          cancelLabel={confirmAction.cancelLabel || 'Cancel'}
+          cancelLabel={confirmAction.cancelLabel   || 'Cancel'}
           onConfirm={confirmAction.onConfirm}
           onCancel={confirmAction.onCancel || (() => setConfirmAction(null))}
         />

@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS shopping_list_items     CASCADE;
 DROP TABLE IF EXISTS shopping_lists          CASCADE;
 DROP TABLE IF EXISTS unit_conversions        CASCADE;
 DROP TABLE IF EXISTS saved_plan_templates    CASCADE;
+DROP TABLE IF EXISTS daily_meals             CASCADE;
 DROP TABLE IF EXISTS meal_plan_recipes       CASCADE;
 DROP TABLE IF EXISTS meal_plans              CASCADE;
 DROP TABLE IF EXISTS recipe_dietary_tags     CASCADE;
@@ -181,7 +182,7 @@ CREATE TABLE nutrition_log (
     calories   INTEGER,
     protein_g  DECIMAL(5,2),
     carbs_g    DECIMAL(5,2),
-    fat_g      DECIMAL(5,2),
+    fat_g      DECIMAL(5,2), 
     note       VARCHAR(255)
 );
 
@@ -271,30 +272,18 @@ CREATE TABLE cooking_sessions (
 
 
 -- ============================================================
---  MEAL PLANNING
+--  MEAL PLANNING  (per-day, no 7-day plan concept)
 -- ============================================================
 
-CREATE TABLE meal_plans (
-    plan_id    SERIAL       PRIMARY KEY,
-    user_id    INTEGER      NOT NULL REFERENCES app_users(user_id),
-    week_start DATE         NOT NULL,
-    week_end   DATE         NOT NULL,
-    name       VARCHAR(100),
+CREATE TABLE daily_meals (
+    user_id    INTEGER      NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
+    date       DATE         NOT NULL,
+    meal_type  VARCHAR(10)  NOT NULL,
+    recipe_id  INTEGER      NOT NULL REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+    is_cooked  BOOLEAN      DEFAULT FALSE,
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (user_id, week_start)
-);
-
-CREATE TABLE meal_plan_recipes (
-    plan_id     INTEGER     NOT NULL REFERENCES meal_plans(plan_id) ON DELETE CASCADE,
-    recipe_id   INTEGER     NOT NULL REFERENCES recipes(recipe_id),
-    day_of_week VARCHAR(10) NOT NULL,
-    meal_type   VARCHAR(10) NOT NULL,
-    is_cooked   BOOLEAN     DEFAULT FALSE,
-    PRIMARY KEY (plan_id, day_of_week, meal_type),
-    CONSTRAINT check_day_of_week
-        CHECK (day_of_week IN ('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday')),
-    CONSTRAINT check_meal_type
-        CHECK (meal_type IN ('breakfast','lunch','dinner'))
+    PRIMARY KEY (user_id, date, meal_type),
+    CONSTRAINT check_meal_type CHECK (meal_type IN ('breakfast','lunch','dinner'))
 );
 
 
@@ -316,8 +305,9 @@ CREATE TABLE saved_plan_templates (
 -- ============================================================
 
 CREATE TABLE shopping_lists (
-    list_id      SERIAL  PRIMARY KEY,
-    plan_id      INTEGER NOT NULL REFERENCES meal_plans(plan_id) ON DELETE CASCADE,
+    list_id      SERIAL    PRIMARY KEY,
+    user_id      INTEGER   NOT NULL REFERENCES app_users(user_id) ON DELETE CASCADE,
+    name         VARCHAR(100),
     generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -366,6 +356,9 @@ INSERT INTO unit_conversions (from_unit, base_unit, factor) VALUES
 --  INDEXES
 -- ============================================================
 
+CREATE INDEX idx_daily_meals_user   ON daily_meals(user_id);
+CREATE INDEX idx_daily_meals_date   ON daily_meals(date);
+CREATE INDEX idx_shopping_list_user ON shopping_lists(user_id);
 CREATE INDEX idx_pantry_user        ON pantry_items(user_id);
 CREATE INDEX idx_pantry_ingredient  ON pantry_items(ingredient_id);
 CREATE INDEX idx_pantry_location    ON pantry_items(storage_location);
@@ -383,8 +376,6 @@ CREATE INDEX idx_rec_cuis_recipe    ON recipe_cuisines(recipe_id);
 CREATE INDEX idx_rec_cuis_cuisine   ON recipe_cuisines(cuisine_id);
 CREATE INDEX idx_rec_dtag_recipe    ON recipe_dietary_tags(recipe_id);
 CREATE INDEX idx_cooking_user       ON cooking_sessions(user_id);
-CREATE INDEX idx_meal_plan_user     ON meal_plans(user_id);
-CREATE INDEX idx_meal_plan_rec      ON meal_plan_recipes(plan_id);
 
 
 -- ============================================================

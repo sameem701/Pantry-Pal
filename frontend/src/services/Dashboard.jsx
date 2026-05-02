@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getDailyNutritionLog } from '../api/NutritionApi';
 import { getPantry } from '../api/PantryApi';
-import { createMealPlan, getMealPlan } from '../api/MealPlanApi';
+import { getMealsForRange } from '../api/MealPlanApi';
 import { getRecentlyCooked } from '../utils/recentlyCookedStore';
 import './Dashboard.css';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
 const MEAL_ORDER = ['breakfast','lunch','dinner'];
 
 function toISO(d) {
@@ -18,16 +18,7 @@ function toISO(d) {
   return `${y}-${m}-${dd}`;
 }
 
-function getMonday(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = (day === 0 ? -6 : 1 - day);
-  date.setDate(date.getDate() + diff);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
 
-function planKey(d) { return 'pantrypal_plan_' + toISO(d); }
 
 /** Rough daily targets (configurable in future) */
 const TARGETS = { calories: 2000, protein_g: 50, carbs_g: 260, fat_g: 65 };
@@ -71,7 +62,6 @@ export default function Dashboard() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayName = DAYS[today.getDay()];
   const dateLabel = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   // ── state ─────────────────────────────────────────────────────────────────
@@ -80,7 +70,6 @@ export default function Dashboard() {
   const [pantryCount,   setPantryCount]   = useState(null);
   const [lowItems,      setLowItems]      = useState(0);
   const [recentCooked,  setRecentCooked]  = useState([]);
-  const [planId,        setPlanId]        = useState(null);
 
   // ── fetch nutrition log ──────────────────────────────────────────────────
   useEffect(() => {
@@ -90,35 +79,16 @@ export default function Dashboard() {
       .catch(() => {});
   }, [userId]);
 
-  // ── fetch today's meal plan ──────────────────────────────────────────────
+  // ── fetch today's meals ──────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
-    const monday = getMonday(today);
-    const saved  = localStorage.getItem(planKey(monday));
-    const storedId = saved ? Number(saved) : null;
-
-    async function load(id) {
-      try {
-        const data = await getMealPlan(id, userId);
-        const meals = data.meals || data.data || [];
-        setPlanId(id);
-        setTodayMeals(meals.filter(m => m.day_of_week === todayName));
-      } catch { setTodayMeals([]); }
-    }
-
-    if (storedId) {
-      load(storedId);
-    } else {
-      // Try creating/getting this week's plan
-      createMealPlan(userId, toISO(monday))
-        .then(res => {
-          if (res?.plan_id) {
-            localStorage.setItem(planKey(monday), String(res.plan_id));
-            return load(res.plan_id);
-          }
-        })
-        .catch(() => {});
-    }
+    const todayISO = toISO(today);
+    getMealsForRange(userId, todayISO, todayISO)
+      .then(data => {
+        const meals = data?.meals ?? data?.data ?? (Array.isArray(data) ? data : []);
+        setTodayMeals(Array.isArray(meals) ? meals : []);
+      })
+      .catch(() => setTodayMeals([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
