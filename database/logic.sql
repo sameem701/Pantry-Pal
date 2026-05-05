@@ -814,13 +814,15 @@ $$ LANGUAGE plpgsql;
 --      FIX: cuisine filter uses INNER JOIN when filter is active to avoid
 --           duplicate rows from LEFT JOIN + ANY() combination
 DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'search_recipes_by_pantry' LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP; END $$;
+DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'search_recipes_by_pantry' LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP; END $$;
 CREATE OR REPLACE FUNCTION search_recipes_by_pantry(
-    p_user_id     INTEGER,
-    p_cuisine_ids INTEGER[]   DEFAULT NULL,
-    p_difficulty  VARCHAR(20) DEFAULT NULL,
-    p_max_missing INTEGER     DEFAULT NULL,
-    p_limit       INTEGER     DEFAULT 20,
-    p_offset      INTEGER     DEFAULT 0
+    p_user_id        INTEGER,
+    p_cuisine_ids    INTEGER[]   DEFAULT NULL,
+    p_difficulty     VARCHAR(20) DEFAULT NULL,
+    p_max_missing    INTEGER     DEFAULT NULL,
+    p_limit          INTEGER     DEFAULT 20,
+    p_offset         INTEGER     DEFAULT 0,
+    p_preference_ids INTEGER[]   DEFAULT NULL
 )
 RETURNS JSON AS $$
 DECLARE v_result JSON;
@@ -856,15 +858,18 @@ BEGIN
                       AND rcu.cuisine_id = ANY(p_cuisine_ids)
                 )
             )
-            -- Dietary restriction filter: exclude recipes with forbidden ingredients
-            AND NOT EXISTS (
-                SELECT 1
-                FROM recipe_ingredients ri2
-                JOIN preference_food_group pfg
-                    ON pfg.ingredient_id = ri2.ingredient_id AND pfg.allowed = 0
-                JOIN user_preference up
-                    ON up.preference_id = pfg.preference_id AND up.user_id = p_user_id
-                WHERE ri2.recipe_id = r.recipe_id
+            -- Dietary restriction filter: only applied when caller passes preference IDs
+            AND (
+                p_preference_ids IS NULL
+                OR array_length(p_preference_ids, 1) IS NULL
+                OR NOT EXISTS (
+                    SELECT 1
+                    FROM recipe_ingredients ri2
+                    JOIN preference_food_group pfg
+                        ON pfg.ingredient_id = ri2.ingredient_id AND pfg.allowed = 0
+                    WHERE ri2.recipe_id = r.recipe_id
+                      AND pfg.preference_id = ANY(p_preference_ids)
+                )
             )
         GROUP BY r.recipe_id, r.title, r.difficulty,
                  r.cooking_time_min, r.image_url, rs.average_rating, rs.total_reviews
@@ -885,13 +890,14 @@ $$ LANGUAGE plpgsql;
 --      FIX: cuisine filter uses EXISTS to avoid duplicate rows
 DO $$ DECLARE r RECORD; BEGIN FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'browse_recipes' LOOP EXECUTE 'DROP FUNCTION IF EXISTS ' || r.sig || ' CASCADE'; END LOOP; END $$;
 CREATE OR REPLACE FUNCTION browse_recipes(
-    p_user_id     INTEGER     DEFAULT NULL,
-    p_search_term VARCHAR(255) DEFAULT NULL,
-    p_cuisine_ids INTEGER[]   DEFAULT NULL,
-    p_difficulty  VARCHAR(20) DEFAULT NULL,
-    p_creator_id  INTEGER     DEFAULT NULL,
-    p_limit       INTEGER     DEFAULT 20,
-    p_offset      INTEGER     DEFAULT 0
+    p_user_id        INTEGER      DEFAULT NULL,
+    p_search_term    VARCHAR(255) DEFAULT NULL,
+    p_cuisine_ids    INTEGER[]    DEFAULT NULL,
+    p_difficulty     VARCHAR(20)  DEFAULT NULL,
+    p_creator_id     INTEGER      DEFAULT NULL,
+    p_limit          INTEGER      DEFAULT 20,
+    p_offset         INTEGER      DEFAULT 0,
+    p_preference_ids INTEGER[]    DEFAULT NULL
 )
 RETURNS JSON AS $$
 DECLARE v_result JSON;
@@ -906,9 +912,16 @@ BEGIN
             r.user_id       AS creator_id,
             rs.average_rating,
             rs.total_reviews,
-            rs.favourite_count
+            rs.favourite_count,
+            json_build_object(
+                'calories',  rn.calories,
+                'protein_g', rn.protein_g,
+                'carbs_g',   rn.carbs_g,
+                'fat_g',     rn.fat_g
+            ) AS nutrition
         FROM recipes r
         JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
+        LEFT JOIN recipe_nutrition rn ON rn.recipe_id = r.recipe_id
         WHERE
             r.status = 'published'
             AND (p_search_term IS NULL OR r.title ILIKE '%' || p_search_term || '%')
@@ -922,17 +935,17 @@ BEGIN
                       AND rcu.cuisine_id = ANY(p_cuisine_ids)
                 )
             )
-            -- Respect dietary restrictions when a user is provided
+            -- Dietary restriction filter: only applied when caller passes preference IDs
             AND (
-                p_user_id IS NULL
+                p_preference_ids IS NULL
+                OR array_length(p_preference_ids, 1) IS NULL
                 OR NOT EXISTS (
                     SELECT 1
                     FROM recipe_ingredients ri2
                     JOIN preference_food_group pfg
                         ON pfg.ingredient_id = ri2.ingredient_id AND pfg.allowed = 0
-                    JOIN user_preference up
-                        ON up.preference_id = pfg.preference_id AND up.user_id = p_user_id
                     WHERE ri2.recipe_id = r.recipe_id
+                      AND pfg.preference_id = ANY(p_preference_ids)
                 )
             )
         ORDER BY rs.average_rating DESC, rs.total_reviews DESC

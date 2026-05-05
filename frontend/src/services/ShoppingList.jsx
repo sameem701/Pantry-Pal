@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getSavedLists, clearList, toggleListItem, markAllListItems } from '../utils/shoppingListStore';
+import { getSavedLists, clearList, toggleListItem, markAllListItems, saveLists } from '../utils/shoppingListStore';
 import { addPantryItem, searchIngredients } from '../api/PantryApi';
 import './ShoppingList.css';
 
@@ -12,7 +12,8 @@ export default function ShoppingList() {
   const { addToast } = useToast();
   const userId       = user?.user_id;
 
-  const [lists,          setLists]          = useState([]);
+  // Initialize directly from localStorage — no flicker, no empty-then-filled render
+  const [lists,          setLists]          = useState(() => getSavedLists());
   const [openId,         setOpenId]         = useState(null);
   const [addingIdx,      setAddingIdx]      = useState(null);
   const [pantryNames,    setPantryNames]    = useState(new Set());
@@ -42,9 +43,9 @@ export default function ShoppingList() {
     }
   }
 
-  // Load lists and pantry on mount so we can auto-check items already owned
+  // Load pantry on mount so we can auto-check items already owned
   useEffect(() => {
-    setLists(getSavedLists());
+    // (lists already loaded synchronously from localStorage in useState initializer)
   }, []);
 
   useEffect(() => {
@@ -70,13 +71,15 @@ export default function ShoppingList() {
     if (openId === listId) changeOpenId(null);
   }
 
-  // ── cascade-check: auto-check matching items across all lists, optionally show +N badge
+  // ── cascade-check: auto-check matching items across all incomplete lists, optionally show +N badge
   function cascadeCheck(addedNamesArray, showBump = true) {
     const addedSet = new Set(addedNamesArray.map(n => (n || '').toLowerCase().trim()).filter(Boolean));
     if (!addedSet.size) return;
     setLists(prev => {
       const rawBumps = {};
       const next = prev.map(list => {
+        // Never auto-check into a fully completed list
+        if (list.items.length > 0 && list.items.every(i => i.is_checked)) return list;
         let bumped = 0;
         const items = list.items.map(item => {
           if (item.is_checked) return item;
@@ -87,6 +90,8 @@ export default function ShoppingList() {
         if (bumped > 0) rawBumps[list.id] = bumped;
         return bumped > 0 ? { ...list, items } : list;
       });
+      // Persist cascade-checked state so it survives navigation
+      if (Object.keys(rawBumps).length > 0) saveLists(next);
       if (Object.keys(rawBumps).length > 0 && showBump) {
         requestAnimationFrame(() => {
           const immediate = {};
@@ -144,11 +149,15 @@ export default function ShoppingList() {
         cascadeCheck([item.ingredient_name || item.name]);
       } catch (err) {
         addToast(err.message || 'Could not add to pantry', 'warning');
-        // revert check on failure
-        setLists(prev => prev.map(l => l.id !== listId ? l : {
-          ...l,
-          items: l.items.map((it, i) => i === idx ? { ...it, is_checked: false } : it),
-        }));
+        // revert check on failure and persist the revert
+        setLists(prev => {
+          const next = prev.map(l => l.id !== listId ? l : {
+            ...l,
+            items: l.items.map((it, i) => i === idx ? { ...it, is_checked: false } : it),
+          });
+          saveLists(next);
+          return next;
+        });
       } finally {
         setAddingIdx(null);
       }
@@ -166,10 +175,14 @@ export default function ShoppingList() {
           if (!p) return;
           clearTimeout(p.tid);
           delete pendingRef.current[key];
-          setLists(prev => prev.map(l => l.id !== listId ? l : {
-            ...l,
-            items: l.items.map((it, i) => i === idx ? { ...it, is_checked: false } : it),
-          }));
+          setLists(prev => {
+            const next = prev.map(l => l.id !== listId ? l : {
+              ...l,
+              items: l.items.map((it, i) => i === idx ? { ...it, is_checked: false } : it),
+            });
+            saveLists(next);
+            return next;
+          });
         },
       }
     );
@@ -187,11 +200,13 @@ export default function ShoppingList() {
     if (!list) return;
     const unchecked = list.items.map((item, idx) => ({ item, idx })).filter(({ item }) => !item.is_checked);
     if (!unchecked.length) { addToast('All items already checked!', 'success'); return; }
-    // Mark all as checked in UI immediately
-    setLists(prev => prev.map(l => l.id !== listId ? l : {
+    // Mark all as checked in UI immediately and persist to localStorage
+    const markedLists = lists.map(l => l.id !== listId ? l : {
       ...l,
       items: l.items.map(it => ({ ...it, is_checked: true })),
-    }));
+    });
+    setLists(markedLists);
+    saveLists(markedLists);
     let added = 0, failed = 0;
     const addedNames = [];
     for (const { item } of unchecked) {

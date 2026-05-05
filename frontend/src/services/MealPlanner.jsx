@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
+import DietaryDropdown from '../components/DietaryDropdown';
+import CuisineDropdown from '../components/CuisineDropdown';
 import {
   getMealsForRange, upsertMeal, removeMeal, clearMealsForDate, markMealCooked,
   suggestMeals, getMissingIngredients,
   saveTemplate, listTemplates, deleteTemplate,
 } from '../api/MealPlanApi';
-import { browseRecipes, listFavourites, toggleFavourite } from '../api/RecipeApi';
+import { browseRecipes, listFavourites, toggleFavourite, listCuisineOptions, listDietaryOptions } from '../api/RecipeApi';
+import { getProfile } from '../api/UserApi';
 import { saveShoppingListLocally } from '../utils/shoppingListStore';
 import './MealPlanner.css';
 
@@ -87,6 +90,94 @@ function DonutChart({ slices, centerLabel, centerSub }) {
   );
 }
 
+/* Big progress donut: planned as outlined arcs, cooked fills them in.
+   fillFractions: array of 0–1 values, one per planSlice */
+function ProgressDonut({ planSlices, fillFractions, centerTopLabel, centerTopSub, centerBotLabel, centerBotSub }) {
+  const R = 100, STROKE = 28, SIZE = 300;
+  const GAP_PX = 8; // pixel gap between segment arcs
+  const CX = SIZE / 2, CY = SIZE / 2;
+  const circumference = 2 * Math.PI * R;
+
+  // Build arc geometry
+  const totalPct = planSlices.reduce((s, x) => s + x.pct, 0) || 100;
+  const totalGapLen = GAP_PX * planSlices.length;
+  const usableLen   = circumference - totalGapLen;
+
+  const arcs = [];
+  let offset = 0;
+  planSlices.forEach((ps, i) => {
+    const planLen    = (ps.pct / totalPct) * usableLen;
+    const fillLen    = planLen * Math.min(fillFractions[i] || 0, 1);
+    const dashoffset = circumference * 0.25 - offset;
+    arcs.push({ planLen, fillLen, dashoffset, color: ps.color, leadingEdge: offset });
+    offset += planLen + GAP_PX;
+  });
+
+  return (
+    <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ display: 'block', margin: '0 auto' }}>
+      {/* Base track */}
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="#ede8e3" strokeWidth={STROKE} />
+      {/* Planned outline arcs */}
+      {arcs.map((a, i) => (
+        <circle key={'plan-' + i} cx={CX} cy={CY} r={R} fill="none"
+          stroke={planSlices[i].color}
+          strokeOpacity="0.55"
+          strokeWidth={STROKE}
+          strokeDasharray={`${a.planLen} ${circumference - a.planLen}`}
+          strokeDashoffset={a.dashoffset}
+          strokeLinecap="butt" />
+      ))}
+      {/* Cooked fill arcs — strokeDasharray + strokeDashoffset both in style so transition fires */}
+      {arcs.map((a, i) => (
+        <circle key={'cook-' + i} cx={CX} cy={CY} r={R} fill="none"
+          stroke={planSlices[i].color}
+          strokeOpacity="1"
+          strokeWidth={STROKE}
+          strokeLinecap="butt"
+          style={{
+            strokeDasharray: `${a.fillLen} ${circumference - a.fillLen}`,
+            strokeDashoffset: a.dashoffset,
+            transition: 'stroke-dasharray 0.75s cubic-bezier(.4,0,.2,1)',
+          }} />
+      ))}
+      {/* White gap lines drawn at the LEADING EDGE of each segment
+          so the fill arc visually starts right at the separator */}
+      {arcs.map((a, i) => {
+        // leading edge = exact start of this segment's fill arc
+        const angleDeg = -90 + (a.leadingEdge / circumference) * 360;
+        const angleRad = (angleDeg * Math.PI) / 180;
+        const inner = R - STROKE / 2 - 2;
+        const outer = R + STROKE / 2 + 2;
+        const x1 = CX + Math.cos(angleRad) * inner;
+        const y1 = CY + Math.sin(angleRad) * inner;
+        const x2 = CX + Math.cos(angleRad) * outer;
+        const y2 = CY + Math.sin(angleRad) * outer;
+        return (
+          <line key={'gap-' + i} x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke="#fff" strokeWidth={GAP_PX + 4} strokeLinecap="round" />
+        );
+      })}
+      {/* Center labels */}
+      {centerTopLabel != null && (
+        <text x={CX} y={CY - 16} textAnchor="middle" fontSize="30" fontWeight="700"
+          fill="#1a1a2e" fontFamily="sans-serif">{centerTopLabel}</text>
+      )}
+      {centerTopSub && (
+        <text x={CX} y={CY + 10} textAnchor="middle" fontSize="12" fill="#888"
+          fontFamily="sans-serif">{centerTopSub}</text>
+      )}
+      {centerBotLabel != null && (
+        <text x={CX} y={CY + 32} textAnchor="middle" fontSize="13" fontWeight="600"
+          fill="#aaa" fontFamily="sans-serif">{centerBotLabel}</text>
+      )}
+      {centerBotSub && (
+        <text x={CX} y={CY + 50} textAnchor="middle" fontSize="11" fill="#bbb"
+          fontFamily="sans-serif">{centerBotSub}</text>
+      )}
+    </svg>
+  );
+}
+
 export default function MealPlanner() {
   const { user }     = useAuth();
   const { addToast } = useToast();
@@ -103,6 +194,7 @@ export default function MealPlanner() {
   const [slotMap,       setSlotMap]       = useState({});
   const [loading,       setLoading]       = useState(false);
   const [activeTab,     setActiveTab]     = useState('calendar');
+  const [nutAnimReady,  setNutAnimReady]  = useState(false);
   const [dragOver,      setDragOver]      = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
@@ -125,6 +217,11 @@ export default function MealPlanner() {
   const [recipeSearch,  setRecipeSearch]  = useState('');
   const [recipeView,    setRecipeView]    = useState('all');
   const [recipeLoading, setRecipeLoading] = useState(false);
+  const [mpDifficulty,  setMpDifficulty]  = useState('');
+  const [mpCuisineIds,  setMpCuisineIds]  = useState(new Set());
+  const [mpDietary,     setMpDietary]     = useState(new Set());
+  const [mpCuisineOpts, setMpCuisineOpts] = useState([]);
+  const [mpDietaryOpts, setMpDietaryOpts] = useState([]);
   const recipeTimer = useRef(null);
 
   // ── shopping ───────────────────────────────────────────────────────────────
@@ -159,6 +256,14 @@ export default function MealPlanner() {
   // view template modal
   const [viewTmplModal, setViewTmplModal] = useState(null);
 
+  // ── nutrition tab animation trigger ───────────────────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'nutrition') { setNutAnimReady(false); return; }
+    // small delay so the DOM mounts at 0 before the transition fires
+    const t = setTimeout(() => setNutAnimReady(true), 80);
+    return () => clearTimeout(t);
+  }, [activeTab]);
+
   // ── load meals ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
@@ -180,6 +285,63 @@ export default function MealPlanner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startISO, reloadTrigger, userId]);
 
+  // ── load cuisine/dietary options for recipe list filters ──────────────────
+  useEffect(() => {
+    listCuisineOptions()
+      .then(d => {
+        const arr = d?.cuisines ?? d?.data ?? d ?? [];
+        const norm = Array.isArray(arr)
+          ? arr.map(x => ({ id: x.cuisine_id ?? x.id, name: x.name ?? x }))
+          : [];
+        setMpCuisineOpts(norm);
+      }).catch(() => {});
+    listDietaryOptions()
+      .then(d => {
+        const arr = d?.dietary_preferences ?? d?.data ?? d ?? [];
+        const opts = Array.isArray(arr)
+          ? arr.map(x => ({ id: x.preference_id ?? x.id, name: x.preference_name ?? x.name ?? x }))
+          : [];
+        setMpDietaryOpts(opts);
+      }).catch(() => {});
+  }, []);
+
+  // ── pre-load user's profile filters (cuisine, dietary, skill) as defaults ───────
+  useEffect(() => {
+    if (!userId) return;
+    getProfile(userId)
+      .then(data => {
+        const profile = data?.success ? data : data?.user ?? data?.data ?? data;
+        if (!profile) return;
+        // Skill level → difficulty
+        if (profile.skill_level) {
+          const map = { beginner: 'Easy', intermediate: 'Medium', advanced: 'Hard',
+                         easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+          const mapped = map[profile.skill_level.toLowerCase()] ?? '';
+          if (mapped) setMpDifficulty(mapped);
+        }
+        // Preferred cuisines → load all as Set
+        if (Array.isArray(profile.preferred_cuisines) && profile.preferred_cuisines.length > 0) {
+          const ids = profile.preferred_cuisines
+            .map(c => c?.cuisine_id ?? c?.id)
+            .filter(id => id != null)
+            .map(Number)
+            .filter(Number.isFinite);
+          if (ids.length > 0) setMpCuisineIds(new Set(ids));
+        }
+        // Dietary preferences
+        if (Array.isArray(profile.dietary_preferences) && profile.dietary_preferences.length > 0) {
+          const ids = profile.dietary_preferences
+            .map(p => p.preference_id ?? p.id)
+            .filter(id => id != null)
+            .map(Number)
+            .filter(Number.isFinite);
+          if (ids.length > 0) setMpDietary(new Set(ids));
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   // ── load recipe list ───────────────────────────────────────────────────────
   useEffect(() => {
     clearTimeout(recipeTimer.current);
@@ -192,7 +354,15 @@ export default function MealPlanner() {
           const raw  = data?.recipes ?? data?.favourites ?? data?.data ?? data;
           list = Array.isArray(raw) ? raw : [];
         } else {
-          const data = await browseRecipes({ userId, q: recipeSearch || undefined, sortBy: 'trending', limit: 50 });
+          const data = await browseRecipes({
+            userId,
+            q:             recipeSearch || undefined,
+            difficulty:    mpDifficulty || undefined,
+            cuisineIds:    mpCuisineIds.size > 0 ? [...mpCuisineIds] : undefined,
+            preferenceIds: mpDietary.size > 0 ? [...mpDietary] : undefined,
+            sortBy: 'trending',
+            limit: 50,
+          });
           const raw  = data?.recipes ?? data?.data ?? data?.items ?? data;
           list = Array.isArray(raw) ? raw : [];
         }
@@ -211,7 +381,7 @@ export default function MealPlanner() {
       }
     }, 400);
     return () => clearTimeout(recipeTimer.current);
-  }, [userId, recipeView, recipeSearch]);
+}, [userId, recipeView, recipeSearch, mpDifficulty, Array.from(mpCuisineIds).sort().join(','), Array.from(mpDietary).sort().join(',')]);
 
   // ── navigation ─────────────────────────────────────────────────────────────
   function nav(days) {
@@ -925,6 +1095,8 @@ export default function MealPlanner() {
                             hasAnyMeals ? 'col-in-plan' : '',
                             slot   ? 'has-meal'   : 'empty',
                             isPast ? 'past-slot'  : '',
+                            isPast && slot && slot.isCooked  ? 'past-cooked' : '',
+                            isPast && slot && !slot.isCooked ? 'past-missed' : '',
                             isOver && !isPast ? 'drag-over' : '',
                             selectedRecipe && !isPast ? 'click-target' : '',
                             isSelected ? 'slot-clear-selected' : '',
@@ -947,8 +1119,9 @@ export default function MealPlanner() {
                                 : undefined}
                             >
                               {slot.isCooked && <span className="slot-cooked-badge">&#10003; Cooked</span>}
+                              {isPast && !slot.isCooked && <span className="slot-missed-badge">&#10005; Missed</span>}
                               <span className="slot-title">{slot.title}</span>
-                              {!isPast && !slot.isCooked && !clearMode && (
+                              {!isPast && !slot.isCooked && !clearMode && iso === todayIso && (
                                 <div className="slot-actions">
                                   <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(iso, type, e)}>Cook</button>
                                   <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(iso, type, e)}>&#215;</button>
@@ -999,6 +1172,39 @@ export default function MealPlanner() {
                 </div>
               </div>
 
+              {/* ── Recipe list filters ──────────────────────────────────── */}
+              <div className="mp-recipe-filters">
+                <select
+                  className="mp-filter-select"
+                  value={mpDifficulty}
+                  onChange={e => setMpDifficulty(e.target.value)}
+                >
+                  <option value="">Any Skill</option>
+                  {['Easy','Medium','Hard'].map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+
+                <CuisineDropdown
+                  options={mpCuisineOpts}
+                  value={mpCuisineIds}
+                  onChange={setMpCuisineIds}
+                  placeholder="All Cuisines"
+                />
+
+                <DietaryDropdown
+                    options={mpDietaryOpts}
+                    value={mpDietary}
+                    onChange={setMpDietary}
+                    placeholder="Dietary"
+                  />
+
+                {(mpDifficulty || mpCuisineIds.size > 0 || mpDietary.size > 0) && (
+                  <button
+                    className="mp-filter-clear"
+                    onClick={() => { setMpDifficulty(''); setMpCuisineIds(new Set()); setMpDietary(new Set()); }}
+                  >Clear</button>
+                )}
+              </div>
+
               {recipeLoading && <p className="mp-recipe-loading">Loading recipes...</p>}
               {!recipeLoading && recipeList.length === 0 && (
                 <p className="mp-recipe-empty">No recipes found.</p>
@@ -1006,9 +1212,26 @@ export default function MealPlanner() {
 
               <div className="mp-recipe-list">
                 {recipeList.map(recipe => {
-                  const p   = recipe.nutrition?.protein_g || recipe.protein_g;
-                  const c   = recipe.nutrition?.carbs_g   || recipe.carbs_g;
-                  const cal = recipe.nutrition?.calories  || recipe.calories;
+                  const p   = recipe.nutrition?.protein_g ?? recipe.protein_g;
+                  const c   = recipe.nutrition?.carbs_g   ?? recipe.carbs_g;
+                  const fat = recipe.nutrition?.fat_g     ?? recipe.fat_g;
+                  const cal = recipe.nutrition?.calories  ?? recipe.calories;
+                  const showMacros = recipeView === 'protein' || recipeView === 'carbs';
+                  // Build macro list: active macro first, then the rest
+                  const macroTags = [];
+                  if (recipeView === 'protein') {
+                    if (p   != null) macroTags.push({ label: `${Math.round(p)}g protein`,   hi: true  });
+                    if (c   != null) macroTags.push({ label: `${Math.round(c)}g carbs`,     hi: false });
+                    if (fat != null) macroTags.push({ label: `${Math.round(fat)}g fat`,     hi: false });
+                    if (cal != null) macroTags.push({ label: `${Math.round(cal)} kcal`,     hi: false });
+                  } else if (recipeView === 'carbs') {
+                    if (c   != null) macroTags.push({ label: `${Math.round(c)}g carbs`,     hi: true  });
+                    if (p   != null) macroTags.push({ label: `${Math.round(p)}g protein`,   hi: false });
+                    if (fat != null) macroTags.push({ label: `${Math.round(fat)}g fat`,     hi: false });
+                    if (cal != null) macroTags.push({ label: `${Math.round(cal)} kcal`,     hi: false });
+                  } else {
+                    if (cal != null) macroTags.push({ label: `${Math.round(cal)} kcal`,     hi: false });
+                  }
                   const isSelected = selectedRecipe?.recipeId === recipe.recipe_id;
                   return (
                     <div
@@ -1026,9 +1249,9 @@ export default function MealPlanner() {
                           {recipe.difficulty && (
                             <span className={'badge badge-diff badge-' + recipe.difficulty.toLowerCase()}>{recipe.difficulty}</span>
                           )}
-                          {recipeView === 'protein' && p  && <span className="mp-macro-tag">{Math.round(p)}g prot</span>}
-                          {recipeView === 'carbs'   && c  && <span className="mp-macro-tag">{Math.round(c)}g carbs</span>}
-                          {cal && <span className="mp-macro-tag">{Math.round(cal)} kcal</span>}
+                          {macroTags.map((tag, i) => (
+                            <span key={i} className={'mp-macro-tag' + (tag.hi ? ' mp-macro-hi' : '')}>{tag.label}</span>
+                          ))}
                         </div>
                       </div>
                       <button
@@ -1057,25 +1280,47 @@ export default function MealPlanner() {
             fat:      a.fat      + (m.nutrition?.fat       || 0),
           }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
         }
+
+        // Build 4-segment slices: Protein, Carbs, Fat, Other
+        // "Other" = calories not accounted for by macros (fiber, alcohol, rounding)
         function buildSlices(totals) {
-          const pc = totals.protein * 4;
-          const cc = totals.carbs   * 4;
-          const fc = totals.fat     * 9;
-          const t  = pc + cc + fc || 1;
+          const pc  = totals.protein * 4;
+          const cc  = totals.carbs   * 4;
+          const fc  = totals.fat     * 9;
+          const oc  = Math.max(0, totals.calories - pc - cc - fc);
+          const t   = pc + cc + fc + oc || 1;
           return [
-            { label: 'Protein', pct: (pc / t) * 100, color: '#4caf8c', grams: Math.round(totals.protein) },
-            { label: 'Carbs',   pct: (cc / t) * 100, color: '#5a4fcf', grams: Math.round(totals.carbs)   },
-            { label: 'Fat',     pct: (fc / t) * 100, color: '#e8a050', grams: Math.round(totals.fat)     },
+            { label: 'Protein', pct: (pc / t) * 100, color: '#2e9068', grams: Math.round(totals.protein), kcal: Math.round(pc) },
+            { label: 'Carbs',   pct: (cc / t) * 100, color: '#3d31b0', grams: Math.round(totals.carbs),   kcal: Math.round(cc) },
+            { label: 'Fat',     pct: (fc / t) * 100, color: '#c97c28', grams: Math.round(totals.fat),     kcal: Math.round(fc) },
+            { label: 'Other',   pct: (oc / t) * 100, color: '#c03060', grams: null,                       kcal: Math.round(oc) },
           ];
         }
+
         const allSlots    = Object.values(slotMap);
         const cookedSlots = allSlots.filter(s => s.isCooked);
         const cookedTotal = sumNut(cookedSlots);
         const planTotal   = sumNut(allSlots);
         const cookedSlices = buildSlices(cookedTotal);
         const planSlices   = buildSlices(planTotal);
-        const hasPlanData   = allSlots.length > 0 && planTotal.calories > 0;
-        const hasCookedData = cookedSlots.length > 0 && cookedTotal.calories > 0;
+        const hasPlanData  = allSlots.length > 0 && planTotal.calories > 0;
+
+        // Fill fractions: cooked / planned per macro (0–1), using absolute gram amounts
+        const otherPlan   = Math.max(0, planTotal.calories   - planTotal.protein * 4 - planTotal.carbs * 4 - planTotal.fat * 9);
+        const otherCooked = Math.max(0, cookedTotal.calories - cookedTotal.protein * 4 - cookedTotal.carbs * 4 - cookedTotal.fat * 9);
+        const fillFractions = [
+          planTotal.protein > 0 ? Math.min(1, cookedTotal.protein / planTotal.protein) : 0,
+          planTotal.carbs   > 0 ? Math.min(1, cookedTotal.carbs   / planTotal.carbs)   : 0,
+          planTotal.fat     > 0 ? Math.min(1, cookedTotal.fat     / planTotal.fat)     : 0,
+          otherPlan         > 0 ? Math.min(1, otherCooked         / otherPlan)         : 0,
+        ];
+        const FALLBACK_SLICES = [
+          { pct: 30, color: '#2e9068' },
+          { pct: 40, color: '#3d31b0' },
+          { pct: 25, color: '#c97c28' },
+          { pct: 5,  color: '#c03060' },
+        ];
+
         const nutDays = weekDays.map(date => {
           const iso  = toISO(date);
           const meals = MEAL_TYPES
@@ -1084,53 +1329,63 @@ export default function MealPlanner() {
           const total = sumNut(meals.map(m => ({ nutrition: m.nutrition })));
           return { date, iso, isToday: iso === todayIso, isPast: iso < todayIso, meals, total };
         });
+
         return (
           <div className="mp-tab-content">
-            <div className="nut-dual-row">
-              <div className="nut-chart-card">
-                <div className="nut-chart-header">
-                  <h3 className="nut-chart-title">Cooked So Far</h3>
-                  <span className="nut-chart-sub">{cookedSlots.length} meal{cookedSlots.length !== 1 ? 's' : ''} cooked this week</span>
+            {/* ── Single big progress donut ─────────────────────────────── */}
+            <div className="nut-big-card">
+              <div className="nut-big-inner">
+                <div className="nut-big-chart">
+                  <ProgressDonut
+                    planSlices={hasPlanData ? planSlices : FALLBACK_SLICES}
+                    fillFractions={nutAnimReady && hasPlanData ? fillFractions : [0, 0, 0, 0]}
+                    centerTopLabel={hasPlanData ? Math.round(cookedTotal.calories) : '–'}
+                    centerTopSub={hasPlanData ? `of ${Math.round(planTotal.calories)} kcal` : 'No plan data'}
+                    centerBotLabel={cookedSlots.length > 0 ? `${cookedSlots.length} meal${cookedSlots.length !== 1 ? 's' : ''} cooked` : null}
+                    centerBotSub={allSlots.length > 0 ? `of ${allSlots.length} planned` : null}
+                  />
                 </div>
-                <DonutChart slices={cookedSlices} centerLabel={hasCookedData ? Math.round(cookedTotal.calories) : '\u2013'} centerSub="kcal" />
-                {hasCookedData ? (
-                  <div className="nut-chart-legend">
-                    {cookedSlices.map(s => (
-                      <div key={s.label} className="nut-legend-row">
-                        <span className="nut-legend-dot" style={{ background: s.color }} />
-                        <span className="nut-legend-lbl">{s.label}</span>
-                        <span className="nut-legend-val">{s.grams}g</span>
-                        <span className="nut-legend-pct">{Math.round(s.pct)}%</span>
+                <div className="nut-big-legend">
+                  <p className="nut-big-legend-title">Weekly Progress</p>
+                  <p className="nut-big-legend-sub">Faint arc = planned · Solid arc = cooked so far</p>
+                  {planSlices.map((ps, i) => {
+                    const cs        = cookedSlices[i];
+                    const hasPlan   = hasPlanData && ps.pct > 0;
+                    const pct       = hasPlan ? Math.round(fillFractions[i] * 100) : 0;
+                    const hasCooked = cs && cs.kcal > 0;
+                    return (
+                      <div key={ps.label} className="nut-prog-row">
+                        <span className="nut-prog-dot" style={{ background: ps.color }} />
+                        <span className="nut-prog-lbl">{ps.label}</span>
+                        <div className="nut-prog-track">
+                          <div
+                            className="nut-prog-fill"
+                            style={{
+                              background: ps.color,
+                              width: nutAnimReady ? `${pct}%` : '0%',
+                            }}
+                          />
+                        </div>
+                        <span className="nut-prog-pct">{pct}%</span>
+                        <span className="nut-prog-val">
+                          {hasCooked
+                            ? (cs.grams != null ? `${cs.grams}g` : `${cs.kcal}kcal`)
+                            : '–'}
+                          {hasPlan && ps.grams != null
+                            ? <span className="nut-prog-of"> / {ps.grams}g</span>
+                            : null}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="nut-chart-empty">Mark meals as cooked to track progress</p>
-                )}
-              </div>
-              <div className="nut-chart-card">
-                <div className="nut-chart-header">
-                  <h3 className="nut-chart-title">This Week&rsquo;s Plan</h3>
-                  <span className="nut-chart-sub">{allSlots.length} meal{allSlots.length !== 1 ? 's' : ''} planned</span>
+                    );
+                  })}
+                  {!hasPlanData && (
+                    <p className="nut-chart-empty" style={{ marginTop: 12 }}>Add recipes with nutrition data to see progress</p>
+                  )}
                 </div>
-                <DonutChart slices={planSlices} centerLabel={hasPlanData ? Math.round(planTotal.calories) : '\u2013'} centerSub="kcal" />
-                {hasPlanData ? (
-                  <div className="nut-chart-legend">
-                    {planSlices.map(s => (
-                      <div key={s.label} className="nut-legend-row">
-                        <span className="nut-legend-dot" style={{ background: s.color }} />
-                        <span className="nut-legend-lbl">{s.label}</span>
-                        <span className="nut-legend-val">{s.grams}g</span>
-                        <span className="nut-legend-pct">{Math.round(s.pct)}%</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="nut-chart-empty">Add recipes with nutrition data to your plan</p>
-                )}
               </div>
             </div>
 
+            {/* ── Daily breakdown ──────────────────────────────────────── */}
             {allSlots.length > 0 && (
               <>
                 <h3 className="nut-day-section-title">Daily Breakdown</h3>

@@ -6,6 +6,8 @@ import {
   browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
 } from '../api/RecipeApi';
 import { getRecentlyCooked } from '../utils/recentlyCookedStore';
+import DietaryDropdown from '../components/DietaryDropdown';
+import CuisineDropdown from '../components/CuisineDropdown';
 import './Recipes.css';
 
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
@@ -21,15 +23,15 @@ export default function Recipes() {
 
   const [query,        setQuery]        = useState('');
   const [difficulty,   setDifficulty]   = useState('');
-  const [cuisineId,    setCuisineId]    = useState('');
-  const [dietary,      setDietary]      = useState('');
+  const [cuisineIds,    setCuisineIds]    = useState(new Set());
+  const [dietary,      setDietary]      = useState(new Set());
   const [sortBy,       setSortBy]       = useState('rating'); // 'rating' | 'newest'
   const [filtersReady, setFiltersReady] = useState(false);
 
   // Pending filter state inside modal (only applied on Apply)
   const [pendingDifficulty, setPendingDifficulty] = useState('');
-  const [pendingCuisineId,  setPendingCuisineId]  = useState('');
-  const [pendingDietary,    setPendingDietary]     = useState('');
+  const [pendingCuisineIds, setPendingCuisineIds] = useState(new Set());
+  const [pendingDietary,    setPendingDietary]     = useState(new Set());
 
   const [cuisineOptions, setCuisineOptions] = useState([]);
   const [dietaryOptions, setDietaryOptions] = useState([]);
@@ -56,9 +58,15 @@ export default function Recipes() {
     Promise.all([listCuisineOptions(), listDietaryOptions()])
       .then(([cData, dData]) => {
         const cuisines = cData?.cuisines ?? cData?.data ?? cData ?? [];
-        setCuisineOptions(Array.isArray(cuisines) ? cuisines : []);
+        const cuisineNorm = Array.isArray(cuisines)
+          ? cuisines.map(x => ({ id: x.cuisine_id ?? x.id, name: x.name ?? x }))
+          : [];
+        setCuisineOptions(cuisineNorm);
         const diet = dData?.dietary_preferences ?? dData?.data ?? dData ?? [];
-        setDietaryOptions(Array.isArray(diet) ? diet : []);
+        const dietNorm = Array.isArray(diet)
+          ? diet.map(x => ({ id: x.preference_id ?? x.id, name: x.preference_name ?? x.name ?? x }))
+          : [];
+        setDietaryOptions(dietNorm);
       })
       .catch(() => { setCuisineOptions([]); setDietaryOptions([]); });
 
@@ -73,11 +81,13 @@ export default function Recipes() {
             if (mapped) { setDifficulty(mapped); setPendingDifficulty(mapped); }
           }
           if (Array.isArray(profile.dietary_preferences) && profile.dietary_preferences.length > 0) {
-            const pref = profile.dietary_preferences[0];
-            const name = pref.preference_name || pref.name || '';
-            if (name) { setDietary(name); setPendingDietary(name); }
-          }
-        })
+            const ids = profile.dietary_preferences
+              .map(p => p.preference_id ?? p.id)
+              .filter(id => id != null)
+              .map(Number)
+              .filter(Number.isFinite);
+            if (ids.length > 0) { setDietary(new Set(ids)); setPendingDietary(new Set(ids)); }
+          }        })
         .catch(() => {})
         .finally(() => setFiltersReady(true));
     } else {
@@ -91,7 +101,7 @@ export default function Recipes() {
     setPage(1);
     fetchRecipes(1, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersReady, mode, difficulty, cuisineId, dietary, sortBy]);
+  }, [filtersReady, mode, difficulty, Array.from(cuisineIds).sort().join(','), Array.from(dietary).sort().join(','), sortBy]);
 
   // Debounce text search
   useEffect(() => {
@@ -114,7 +124,8 @@ export default function Recipes() {
         const data = await searchByPantry({
           userId,
           difficulty: difficulty || undefined,
-          cuisineId:  cuisineId  || undefined,
+          cuisineIds:    cuisineIds.size > 0 ? [...cuisineIds] : undefined,
+          preferenceIds: dietary.size > 0 ? [...dietary] : undefined,
           page: p,
           limit: 20,
         });
@@ -129,10 +140,10 @@ export default function Recipes() {
       } else {
         const data = await browseRecipes({
           userId,
-          q:                 query      || undefined,
-          difficulty:        difficulty || undefined,
-          cuisineId:         cuisineId  || undefined,
-          dietaryPreference: dietary    || undefined,
+          q:             query      || undefined,
+          difficulty:    difficulty || undefined,
+          cuisineIds:    cuisineIds.size > 0 ? [...cuisineIds] : undefined,
+          preferenceIds: dietary.size > 0 ? [...dietary] : undefined,
           sortBy,
           page: p,
           limit: 20,
@@ -157,35 +168,35 @@ export default function Recipes() {
 
   function openFilterModal() {
     setPendingDifficulty(difficulty);
-    setPendingCuisineId(cuisineId);
-    setPendingDietary(dietary);
+    setPendingCuisineIds(new Set(cuisineIds));
+    setPendingDietary(new Set(dietary));
     setFilterOpen(true);
   }
 
   function applyFilters() {
     setDifficulty(pendingDifficulty);
-    setCuisineId(pendingCuisineId);
-    setDietary(pendingDietary);
+    setCuisineIds(new Set(pendingCuisineIds));
+    setDietary(new Set(pendingDietary));
     setFilterOpen(false);
   }
 
   function clearFiltersInModal() {
     setPendingDifficulty('');
-    setPendingCuisineId('');
-    setPendingDietary('');
+    setPendingCuisineIds(new Set());
+    setPendingDietary(new Set());
   }
 
   function clearAllFilters() {
     setQuery('');
     setDifficulty('');
-    setCuisineId('');
-    setDietary('');
+    setCuisineIds(new Set());
+    setDietary(new Set());
     setPendingDifficulty('');
-    setPendingCuisineId('');
-    setPendingDietary('');
+    setPendingCuisineIds(new Set());
+    setPendingDietary(new Set());
   }
 
-  const hasActiveFilters = difficulty || cuisineId || dietary;
+  const hasActiveFilters = difficulty || cuisineIds.size > 0 || dietary.size > 0;
 
   async function handleFavourite(e, recipeId) {
     e.stopPropagation();
@@ -304,29 +315,25 @@ export default function Recipes() {
                 </select>
               </label>
 
-              <label className="filter-label">
-                Cuisine
-                <select value={pendingCuisineId} onChange={e => setPendingCuisineId(e.target.value)}>
-                  <option value="">All Cuisines</option>
-                  {cuisineOptions.map(c => (
-                    <option key={c.cuisine_id ?? c.id ?? c.name} value={c.cuisine_id ?? c.id ?? ''}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="filter-label">
+                <span className="filter-label-text">Cuisine</span>
+                <CuisineDropdown
+                  options={cuisineOptions}
+                  value={pendingCuisineIds}
+                  onChange={setPendingCuisineIds}
+                  placeholder="All Cuisines"
+                />
+              </div>
 
-              <label className="filter-label">
-                Dietary
-                <select value={pendingDietary} onChange={e => setPendingDietary(e.target.value)}>
-                  <option value="">No Filter</option>
-                  {dietaryOptions.map(d => (
-                    <option key={d.preference_id ?? d.id ?? d.preference_name ?? d.name} value={d.preference_name ?? d.name ?? d}>
-                      {d.preference_name ?? d.name ?? d}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="filter-label">
+                <span className="filter-label-text">Dietary</span>
+                <DietaryDropdown
+                  options={dietaryOptions}
+                  value={pendingDietary}
+                  onChange={setPendingDietary}
+                  placeholder="No Filter"
+                />
+              </div>
             </div>
 
             <div className="filter-modal-foot">

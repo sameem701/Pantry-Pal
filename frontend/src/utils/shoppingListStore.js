@@ -47,3 +47,7 @@ export function markAllListItems(listId, checked = true) {
     localStorage.setItem(KEY, JSON.stringify(lists));
     return lists;
 }
+
+export function saveLists(lists) {
+    localStorage.setItem(KEY, JSON.stringify(lists));
+}

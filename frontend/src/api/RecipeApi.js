@@ -2,19 +2,20 @@ import { apiRequest } from './client';
 
 // ── Browse / Search ───────────────────────────────────────────────────────────
 
-export function searchByPantry({ userId, difficulty, cuisineId, page = 1, limit = 12 } = {}) {
+export function searchByPantry({ userId, difficulty, cuisineIds, preferenceIds, page = 1, limit = 12 } = {}) {
     const params = new URLSearchParams({ page, limit });
     if (difficulty) params.set('difficulty', difficulty);
-    if (cuisineId) params.set('cuisine_id', cuisineId);
+    if (cuisineIds && cuisineIds.length > 0) params.set('cuisine_ids', cuisineIds.join(','));
+    if (preferenceIds && preferenceIds.length > 0) params.set('preference_ids', preferenceIds.join(','));
     return apiRequest(`/recipes/search-by-pantry/${userId}?${params}`);
 }
 
-export function browseRecipes({ userId, q, difficulty, cuisineId, dietaryPreference, sortBy = 'trending', page = 1, limit = 12 }) {
+export function browseRecipes({ userId, q, difficulty, cuisineIds, preferenceIds, sortBy = 'trending', page = 1, limit = 12 }) {
     const params = new URLSearchParams({ user_id: userId, sort_by: sortBy, page, limit });
     if (q) params.set('q', q);
     if (difficulty) params.set('difficulty', difficulty);
-    if (cuisineId) params.set('cuisine_id', cuisineId);
-    if (dietaryPreference) params.set('dietary_preference', dietaryPreference);
+    if (cuisineIds && cuisineIds.length > 0) params.set('cuisine_ids', cuisineIds.join(','));
+    if (preferenceIds && preferenceIds.length > 0) params.set('preference_ids', preferenceIds.join(','));
     return apiRequest(`/recipes/browse?${params}`);
 }
 

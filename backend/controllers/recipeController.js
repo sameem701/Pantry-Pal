@@ -25,13 +25,13 @@ const toIntegerArray = (value) => {
   return Number.isFinite(numericValue) ? [numericValue] : [];
 };
 
-const searchRecipesByPantry = async (userId, { cuisineIds = null, difficulty = null, maxMissing = null } = {}, page = 1, limit = 10) => {
+const searchRecipesByPantry = async (userId, { cuisineIds = null, difficulty = null, maxMissing = null, preferenceIds = null } = {}, page = 1, limit = 10) => {
   const offset = (page - 1) * limit;
   const numericMaxMissing = maxMissing !== null && maxMissing !== undefined && Number.isFinite(Number(maxMissing))
     ? Number(maxMissing)
     : null;
   const query = `
-        SELECT search_recipes_by_pantry($1::INTEGER, $2::INTEGER[], $3::VARCHAR, $4::INTEGER, $5::INTEGER, $6::INTEGER) AS result
+        SELECT search_recipes_by_pantry($1::INTEGER, $2::INTEGER[], $3::VARCHAR, $4::INTEGER, $5::INTEGER, $6::INTEGER, $7::INTEGER[]) AS result
     `;
   const { rows } = await pool.query(query, [
     userId,
@@ -39,7 +39,8 @@ const searchRecipesByPantry = async (userId, { cuisineIds = null, difficulty = n
     difficulty || null,
     numericMaxMissing,
     limit,
-    offset
+    offset,
+    toIntegerArray(preferenceIds)
   ]);
   return rows[0].result;
 };
@@ -50,14 +51,15 @@ const browseRecipes = async (userId, filters = {}, page = 1, limit = 10) => {
     searchTerm = null,
     cuisineIds = null,
     difficulty = null,
-    creatorId = null
+    creatorId = null,
+    preferenceIds = null
   } = filters;
   const numericCreatorId = creatorId !== null && creatorId !== undefined && Number.isFinite(Number(creatorId))
     ? Number(creatorId)
     : null;
 
   const query = `
-        SELECT browse_recipes($1::INTEGER, $2::VARCHAR, $3::INTEGER[], $4::VARCHAR, $5::INTEGER, $6::INTEGER, $7::INTEGER) AS result
+        SELECT browse_recipes($1::INTEGER, $2::VARCHAR, $3::INTEGER[], $4::VARCHAR, $5::INTEGER, $6::INTEGER, $7::INTEGER, $8::INTEGER[]) AS result
     `;
   const { rows } = await pool.query(query, [
     userId,
@@ -66,7 +68,8 @@ const browseRecipes = async (userId, filters = {}, page = 1, limit = 10) => {
     difficulty || null,
     numericCreatorId,
     limit,
-    offset
+    offset,
+    toIntegerArray(preferenceIds)
   ]);
   return rows[0].result;
 };
@@ -168,7 +171,7 @@ const getCookingSession = async (sessionId, userId) => {
 const searchByPantry = async (req, res) => {
   try {
     const { user_id } = req.params;
-    const { page = 1, limit = 10, cuisine_ids, cuisine_id, difficulty, max_missing } = req.query;
+    const { page = 1, limit = 10, cuisine_ids, cuisine_id, difficulty, max_missing, preference_ids } = req.query;
 
     if (!user_id || Number.isNaN(Number(user_id))) {
       return res.status(400).json({ success: false, message: 'Valid user_id is required' });
@@ -186,7 +189,8 @@ const searchByPantry = async (req, res) => {
       {
         cuisineIds: cuisine_ids || cuisine_id || null,
         difficulty: difficulty || null,
-        maxMissing: max_missing
+        maxMissing: max_missing,
+        preferenceIds: preference_ids || null
       },
       Number(page),
       Number(limit)
@@ -210,7 +214,8 @@ const browse = async (req, res) => {
       search_term,
       q,
       page = 1,
-      limit = 10
+      limit = 10,
+      preference_ids
     } = req.query;
 
     if (!user_id || Number.isNaN(Number(user_id))) {
@@ -240,7 +245,8 @@ const browse = async (req, res) => {
         searchTerm: search_term || q || null,
         cuisineIds: cuisine_ids || cuisine_id || null,
         difficulty: difficulty || null,
-        creatorId: creator_id || null
+        creatorId: creator_id || null,
+        preferenceIds: preference_ids || null
       },
       Number(page),
       Number(limit)
