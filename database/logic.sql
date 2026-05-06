@@ -712,10 +712,12 @@ DECLARE
     v_nutrition    JSON;
     v_is_fav       BOOLEAN := FALSE;
 BEGIN
-    SELECT r.*, rs.favourite_count, rs.average_rating, rs.total_reviews
+    SELECT r.*, rs.favourite_count, rs.average_rating, rs.total_reviews,
+           u.display_name AS creator_display_name
     INTO v_recipe
     FROM recipes r
     LEFT JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
+    LEFT JOIN app_users u ON u.user_id = r.user_id
     WHERE r.recipe_id = p_recipe_id;
 
     IF NOT FOUND THEN
@@ -794,7 +796,8 @@ BEGIN
         'image_url',      v_recipe.image_url,
         'status',         v_recipe.status,          -- FIX: added
         'created_at',     v_recipe.created_at,
-        'creator_id',     v_recipe.user_id,
+        'creator_id',             v_recipe.user_id,
+        'creator_display_name',   v_recipe.creator_display_name,
         'stats', json_build_object(
             'average_rating',  v_recipe.average_rating,
             'total_reviews',   v_recipe.total_reviews,
@@ -914,7 +917,8 @@ BEGIN
             r.difficulty,
             r.cooking_time_min,
             r.image_url,
-            r.user_id       AS creator_id,
+            r.user_id          AS creator_id,
+            u.display_name     AS creator_display_name,
             rs.average_rating,
             rs.total_reviews,
             rs.favourite_count,
@@ -926,6 +930,7 @@ BEGIN
             ) AS nutrition
         FROM recipes r
         JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
+        JOIN app_users u ON u.user_id = r.user_id
         LEFT JOIN recipe_nutrition rn ON rn.recipe_id = r.recipe_id
         WHERE
             r.status = 'published'

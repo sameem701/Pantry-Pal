@@ -43,6 +43,10 @@ export function getProfile(userId) {
     return apiRequest(`/users/${userId}`);
 }
 
+export function searchCreators(q) {
+    return apiRequest(`/users/search?q=${encodeURIComponent(q)}`);
+}
+
 export function updateProfile(userId, { skill_level, dietary_preferences, cuisine_preferences }) {
     return apiRequest(`/users/${userId}`, {
         method: 'PUT',

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProfile } from '../api/UserApi';
-import { Search, SlidersHorizontal, X, Utensils, Heart, Check, Clock } from 'lucide-react';
+import { searchCreators } from '../api/UserApi';
+import { Search, SlidersHorizontal, X, Utensils, Heart, Check, Clock, User } from 'lucide-react';
 import StarRating from '../components/StarRating';
 import {
   browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
@@ -25,7 +26,18 @@ export default function Recipes() {
   const [pantryEmpty,  setPantryEmpty]  = useState(false);
   const [filterOpen,   setFilterOpen]   = useState(false);
 
-  const [query,        setQuery]        = useState('');
+  // Search dropdown state
+  const [searchInput,        setSearchInput]        = useState('');
+  const [showSearchDrop,     setShowSearchDrop]     = useState(false);
+  const [recipeSuggestions,  setRecipeSuggestions]  = useState([]);
+  const [creatorSuggestions, setCreatorSuggestions] = useState([]);
+  const searchWrapRef = useRef(null);
+  const suggTimer     = useRef(null);
+
+  // Creator filter
+  const [creatorId,   setCreatorId]   = useState(null);
+  const [creatorName, setCreatorName] = useState('');
+
   const [difficulty,   setDifficulty]   = useState('');
   const [cuisineIds,    setCuisineIds]    = useState(new Set());
   const [dietary,      setDietary]      = useState(new Set());
@@ -47,7 +59,7 @@ export default function Recipes() {
   const [hasMore,       setHasMore]       = useState(false);
   const [recentlyCooked, setRecentlyCooked] = useState([]);
 
-  const searchTimer = useRef(null);
+  const location = useLocation();
 
   // Load recently cooked from localStorage on mount + when page gains focus
   useEffect(() => {
@@ -55,6 +67,55 @@ export default function Recipes() {
     load();
     window.addEventListener('focus', load);
     return () => window.removeEventListener('focus', load);
+  }, []);
+
+  // Read creator filter from navigation state (set by RecipeDetail when clicking creator)
+  useEffect(() => {
+    if (location.state?.creatorId) {
+      setCreatorId(location.state.creatorId);
+      setCreatorName(location.state.creatorName || '');
+      setMode('all');
+      // Clear the state so refreshing the page doesn't re-apply it
+      window.history.replaceState({}, '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Suggestion fetching as user types in the search box
+  useEffect(() => {
+    clearTimeout(suggTimer.current);
+    if (!searchInput.trim()) {
+      setRecipeSuggestions([]);
+      setCreatorSuggestions([]);
+      setShowSearchDrop(false);
+      return;
+    }
+    suggTimer.current = setTimeout(async () => {
+      try {
+        const [recipeData, creatorData] = await Promise.all([
+          browseRecipes({ userId, q: searchInput.trim(), page: 1, limit: 5 }),
+          searchCreators(searchInput.trim()),
+        ]);
+        const rList = recipeData?.recipes ?? recipeData?.data ?? recipeData?.items ?? [];
+        setRecipeSuggestions(Array.isArray(rList) ? rList.slice(0, 5) : []);
+        const cList = creatorData?.creators ?? [];
+        setCreatorSuggestions(Array.isArray(cList) ? cList.slice(0, 5) : []);
+        setShowSearchDrop(true);
+      } catch { /* ignore */ }
+    }, 300);
+    return () => clearTimeout(suggTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  // Close dropdown when clicking outside the search wrap
+  useEffect(() => {
+    function handleOutside(e) {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setShowSearchDrop(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
   // Load options + pre-fill from profile
@@ -99,25 +160,13 @@ export default function Recipes() {
     }
   }, [userId]);
 
-  // Reload when mode, filters, or sort changes
+  // Reload when mode, filters, sort, or creator filter changes
   useEffect(() => {
     if (!filtersReady) return;
     setPage(1);
     fetchRecipes(1, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersReady, mode, difficulty, Array.from(cuisineIds).sort().join(','), Array.from(dietary).sort().join(','), sortBy]);
-
-  // Debounce text search
-  useEffect(() => {
-    if (!filtersReady) return;
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      setPage(1);
-      fetchRecipes(1, true);
-    }, 400);
-    return () => clearTimeout(searchTimer.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [filtersReady, mode, difficulty, creatorId, Array.from(cuisineIds).sort().join(','), Array.from(dietary).sort().join(','), sortBy]);
 
   async function fetchRecipes(p = page, reset = false) {
     setLoading(true);
@@ -152,13 +201,13 @@ export default function Recipes() {
       } else {
         const data = await browseRecipes({
           userId,
-          q:             query      || undefined,
           difficulty:    difficulty || undefined,
           cuisineIds:    cuisineIds.size > 0 ? [...cuisineIds] : undefined,
           preferenceIds: dietary.size > 0 ? [...dietary] : undefined,
           sortBy,
           page: p,
           limit: 20,
+          creatorId:     creatorId  || undefined,
         });
         const raw = data?.recipes ?? data?.data ?? data?.items ?? data;
         list = Array.isArray(raw) ? raw : [];
@@ -199,7 +248,9 @@ export default function Recipes() {
   }
 
   function clearAllFilters() {
-    setQuery('');
+    setSearchInput('');
+    setCreatorId(null);
+    setCreatorName('');
     setDifficulty('');
     setCuisineIds(new Set());
     setDietary(new Set());
@@ -208,7 +259,34 @@ export default function Recipes() {
     setPendingDietary(new Set());
   }
 
-  const hasActiveFilters = difficulty || cuisineIds.size > 0 || dietary.size > 0;
+  function handleSelectCreator(c) {
+    setCreatorId(c.user_id);
+    setCreatorName(c.display_name);
+    setSearchInput('');
+    setShowSearchDrop(false);
+    setMode('all');
+    setPage(1);
+  }
+
+  function handleSelectRecipe(r) {
+    navigate(`/recipes/${r.recipe_id}`);
+    setSearchInput('');
+    setShowSearchDrop(false);
+  }
+
+  function clearCreatorFilter() {
+    setCreatorId(null);
+    setCreatorName('');
+  }
+
+  function handleCreatorClick(name, id) {
+    setCreatorId(id);
+    setCreatorName(name);
+    setMode('all');
+    setPage(1);
+  }
+
+  const hasActiveFilters = difficulty || cuisineIds.size > 0 || dietary.size > 0 || !!creatorId;
 
   async function handleFavourite(e, recipeId) {
     e.stopPropagation();
@@ -277,19 +355,60 @@ export default function Recipes() {
           </div>
 
           {/* Search */}
-          <div className="recipes-search-wrap">
+          <div className="recipes-search-wrap" ref={searchWrapRef}>
             <span className="search-icon"><Search size={15} /></span>
             <input
               className="recipes-search"
               type="text"
-              placeholder="Search recipes..."
-              value={query}
-              onChange={e => setQuery(e.target.value)}
+              placeholder="Search recipes or creators…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onFocus={() => {
+                if (searchInput.trim() && (recipeSuggestions.length > 0 || creatorSuggestions.length > 0)) {
+                  setShowSearchDrop(true);
+                }
+              }}
+              onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+              autoComplete="off"
             />
-            {query && (
-              <button className="search-clear" onClick={() => setQuery('')}><X size={14} /></button>
+            {searchInput && (
+              <button className="search-clear" onClick={() => { setSearchInput(''); setShowSearchDrop(false); }}><X size={14} /></button>
+            )}
+            {showSearchDrop && (recipeSuggestions.length > 0 || creatorSuggestions.length > 0) && (
+              <div className="search-dropdown">
+                {creatorSuggestions.length > 0 && (
+                  <div className="search-drop-section">
+                    <span className="search-drop-label">Creators</span>
+                    {creatorSuggestions.map(c => (
+                      <button key={c.user_id} className="search-drop-item search-drop-creator"
+                        onMouseDown={() => handleSelectCreator(c)}>
+                        <User size={13} /> {c.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {recipeSuggestions.length > 0 && (
+                  <div className="search-drop-section">
+                    <span className="search-drop-label">Recipes</span>
+                    {recipeSuggestions.map(r => (
+                      <button key={r.recipe_id} className="search-drop-item search-drop-recipe"
+                        onMouseDown={() => handleSelectRecipe(r)}>
+                        <Utensils size={13} /> {r.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
+
+          {/* Creator filter chip */}
+          {creatorName && (
+            <div className="creator-filter-chip">
+              By: <strong>{creatorName}</strong>
+              <button className="creator-chip-clear" onClick={clearCreatorFilter}><X size={12} /></button>
+            </div>
+          )}
 
           {/* Clear filters (only when active) */}
           {hasActiveFilters && (
@@ -383,6 +502,7 @@ export default function Recipes() {
             pantryMode={mode === 'pantry'}
             onClick={() => navigate(`/recipes/${recipe.recipe_id}`)}
             onFavourite={e => handleFavourite(e, recipe.recipe_id)}
+            onCreatorClick={r => handleCreatorClick(r.creator_display_name, r.creator_id)}
           />
         ))}
       </div>
@@ -402,7 +522,7 @@ export default function Recipes() {
   );
 }
 
-export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false }) {
+export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false, onCreatorClick = null }) {
   const matchPct     = recipe.match_percentage ?? recipe.match_percent ?? null;
   // DB returns 'missing_ingredients'; fall back to other naming variants
   const missingCount = recipe.missing_ingredients ?? recipe.missing_count ?? recipe.missing_ingredients_count ?? null;
@@ -465,6 +585,16 @@ export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false })
             <StarRating rating={Number(recipe.average_rating)} size={13} />
             <span className="rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
           </div>
+        )}
+
+        {recipe.creator_display_name && (
+          <button
+            className="card-creator"
+            onClick={e => { e.stopPropagation(); onCreatorClick && onCreatorClick(recipe); }}
+            title={`View ${recipe.creator_display_name}'s recipes`}
+          >
+            {recipe.creator_display_name}
+          </button>
         )}
       </div>
     </div>

@@ -10,12 +10,13 @@ export function searchByPantry({ userId, difficulty, cuisineIds, preferenceIds, 
     return apiRequest(`/recipes/search-by-pantry/${userId}?${params}`);
 }
 
-export function browseRecipes({ userId, q, difficulty, cuisineIds, preferenceIds, sortBy = 'trending', page = 1, limit = 12 }) {
+export function browseRecipes({ userId, q, difficulty, cuisineIds, preferenceIds, sortBy = 'trending', page = 1, limit = 12, creatorId } = {}) {
     const params = new URLSearchParams({ user_id: userId, sort_by: sortBy, page, limit });
     if (q) params.set('q', q);
     if (difficulty) params.set('difficulty', difficulty);
     if (cuisineIds && cuisineIds.length > 0) params.set('cuisine_ids', cuisineIds.join(','));
     if (preferenceIds && preferenceIds.length > 0) params.set('preference_ids', preferenceIds.join(','));
+    if (creatorId) params.set('creator_id', creatorId);
     return apiRequest(`/recipes/browse?${params}`);
 }
 

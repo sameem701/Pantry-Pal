@@ -147,6 +147,17 @@ export default function RecipeDetail() {
         <div className="rd-hero-right">
           <h1 className="rd-title">{recipe.title}</h1>
           {recipe.description && <p className="rd-desc">{recipe.description}</p>}
+          {recipe.creator_display_name && (
+            <p className="rd-creator">
+              by{' '}
+              <button
+                className="rd-creator-link"
+                onClick={() => navigate('/recipes', { state: { creatorId: recipe.creator_id ?? recipe.user_id, creatorName: recipe.creator_display_name } })}
+              >
+                {recipe.creator_display_name}
+              </button>
+            </p>
+          )}
           <div className="rd-actions">
             <button
               className={`fav-btn-lg${recipe.is_favourite ? ' faved' : ''}`}

@@ -353,6 +353,23 @@ const resetPasswordHandler = async (req, res) => {
     }
 };
 
+const searchCreators = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || !q.trim()) {
+            return res.json({ success: true, creators: [] });
+        }
+        const { rows } = await pool.query(
+            `SELECT user_id, display_name FROM app_users WHERE display_name ILIKE $1 ORDER BY display_name LIMIT 10`,
+            [`%${q.trim()}%`]
+        );
+        return res.json({ success: true, creators: rows });
+    } catch (error) {
+        console.error('Search creators error:', error);
+        return res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
 module.exports = {
     registerUserTemp,
     verifyAndCreateUser,
@@ -371,5 +388,6 @@ module.exports = {
     getDietaryPreferenceOptions,
     getCuisineOptions,
     forgotPassword,
-    resetPasswordHandler
+    resetPasswordHandler,
+    searchCreators,
 };

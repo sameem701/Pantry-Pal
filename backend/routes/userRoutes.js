@@ -44,10 +44,11 @@ router.get('/preferences/dietary', userController.getDietaryPreferenceOptions);
  */
 router.get('/preferences/cuisines', userController.getCuisineOptions);
 
+router.get('/search', userController.searchCreators);
+
 /**
  * GET /api/users/:id
  * Get user profile
- * Params: id (user_id)
  */
 router.get('/:id', userController.getProfile);
 
