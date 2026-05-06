@@ -59,7 +59,7 @@ function CodeInput({ onChange }) {
 export default function ForgotPassword() {
   const navigate = useNavigate();
   const [step, setStep] = useState('request'); // 'request' | 'reset'
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -71,7 +71,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      await forgotPassword(username);
+      await forgotPassword(email);
       setStep('reset');
     } catch (err) {
       setError(err.message || 'Could not send reset code.');
@@ -87,7 +87,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      await resetPassword(username, code, newPassword, confirm);
+      await resetPassword(email, code, newPassword, confirm);
       navigate('/login');
     } catch (err) {
       setError(err.message || 'Reset failed. Check your code.');
@@ -106,14 +106,13 @@ export default function ForgotPassword() {
 
         {step === 'request' ? (
           <form onSubmit={handleRequest} className="auth-form">
-            <p className="auth-sub">Enter your username and we'll send a reset code.</p>
-            <label>Username</label>
+            <p className="auth-sub">Enter your email and we'll send a reset code.</p>
+            <label>Email</label>
             <input
-              type="text"
-              placeholder="Your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              maxLength={20}
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
               autoFocus
             />
@@ -123,7 +122,7 @@ export default function ForgotPassword() {
           </form>
         ) : (
           <form onSubmit={handleReset} className="auth-form">
-            <p className="auth-sub">Check your account for the code sent to <strong>{username}</strong>.</p>
+            <p className="auth-sub">Check your email for the code sent to <strong>{email}</strong>.</p>
             <label>Reset Code</label>
             <CodeInput onChange={setCode} />
             <label>New Password</label>

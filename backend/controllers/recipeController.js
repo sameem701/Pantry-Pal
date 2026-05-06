@@ -540,7 +540,7 @@ const getRecipeById = async (id, userId = null) => {
     `
       SELECT COALESCE(json_agg(json_build_object(
         'user_id', r.user_id,
-        'email', u.email,
+        'display_name', u.display_name,
         'rating', r.rating,
         'review_text', r.review_text,
         'review_date', r.review_date

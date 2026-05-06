@@ -24,13 +24,14 @@ const toIntegerArray = (value) => {
     return Number.isFinite(numericValue) ? [numericValue] : [];
 };
 
-const validateUsername = (u) => /^[^\s-]{1,20}$/.test(u);
+const validateEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const validateDisplayName = (d) => d && d.length >= 1 && d.length <= 15;
 
-const registerUserTemp = async (email, passwordHash, verificationCode) => {
+const registerUserTemp = async (email, displayName, passwordHash, verificationCode) => {
     const query = `
-        SELECT register_user_temp($1, $2, $3) AS result
+        SELECT register_user_temp($1, $2, $3, $4) AS result
     `;
-    const { rows } = await pool.query(query, [email, passwordHash, verificationCode]);
+    const { rows } = await pool.query(query, [email, displayName, passwordHash, verificationCode]);
     return rows[0].result;
 };
 
@@ -139,19 +140,26 @@ const resetPassword = async (email, resetCode, newPasswordHash) => {
 
 const register = async (req, res) => {
     try {
-        const { email, password, password_confirm } = req.body;
+        const { email, display_name, password, password_confirm } = req.body;
 
-        if (!email || !password || !password_confirm) {
+        if (!email || !display_name || !password || !password_confirm) {
             return res.status(400).json({
                 success: false,
-                message: 'Username and password are required'
+                message: 'Email, display name, and password are required'
             });
         }
 
-        if (!validateUsername(email)) {
+        if (!validateEmail(email)) {
             return res.status(400).json({
                 success: false,
-                message: 'Username must be 1–20 characters with no spaces or hyphens'
+                message: 'Please enter a valid email address'
+            });
+        }
+
+        if (!validateDisplayName(display_name)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Display name must be 1–15 characters'
             });
         }
 
@@ -172,7 +180,7 @@ const register = async (req, res) => {
         const passwordHash = password;
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
         console.log(`[REGISTER] Verification code for ${email}: ${verificationCode}`);
-        const result = await registerUserTemp(email, passwordHash, verificationCode);
+        const result = await registerUserTemp(email, display_name, passwordHash, verificationCode);
 
         if (!result.success) {
             return res.status(400).json(result);
@@ -217,7 +225,7 @@ const login = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Username and password are required'
+                message: 'Email and password are required'
             });
         }
 
@@ -301,7 +309,7 @@ const forgotPassword = async (req, res) => {
         const { email } = req.body;
 
         if (!email) {
-            return res.status(400).json({ success: false, message: 'Username is required' });
+            return res.status(400).json({ success: false, message: 'Email is required' });
         }
 
         const resetCode = Math.floor(100000 + Math.random() * 900000).toString();

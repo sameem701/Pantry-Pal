@@ -60,7 +60,7 @@ function Sidebar() {
 
   function handleLogout() { logout(); navigate('/login'); }
 
-  const initial = (user.email || 'U')[0].toUpperCase();
+  const initial = (user.display_name || user.email || 'U')[0].toUpperCase();
 
   return (
     <aside className="sidebar">
@@ -92,7 +92,7 @@ function Sidebar() {
       <div className="sidebar-footer">
         <div className="sidebar-user">
           <div className="sidebar-avatar">{initial}</div>
-          <span className="sidebar-email">{user.email}</span>
+          <span className="sidebar-email">{user.display_name || user.email}</span>
         </div>
         <button className="sidebar-logout" onClick={handleLogout}>Sign Out</button>
       </div>

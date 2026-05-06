@@ -88,8 +88,8 @@ export default function Profile() {
   return (
     <div className="profile-page">
       <div className="profile-card">
-        <div className="profile-avatar">{(profile?.email || 'U')[0].toUpperCase()}</div>
-        <h2 className="profile-email">{profile?.email}</h2>
+        <div className="profile-avatar">{(profile?.display_name || profile?.email || 'U')[0].toUpperCase()}</div>
+        <h2 className="profile-email">{profile?.display_name}</h2>
         <p className="profile-joined">Member since {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—'}</p>
 
         {error && <p className="pref-error">{error}</p>}

@@ -2,10 +2,10 @@ import { apiRequest } from './client';
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-export function register(email, password, passwordConfirm) {
+export function register(email, displayName, password, passwordConfirm) {
     return apiRequest('/users/register', {
         method: 'POST',
-        body: { email, password, password_confirm: passwordConfirm },
+        body: { email, display_name: displayName, password, password_confirm: passwordConfirm },
     });
 }
 

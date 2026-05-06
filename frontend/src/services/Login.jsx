@@ -10,31 +10,23 @@ export default function Login() {
   const location = useLocation();
   const { login } = useAuth();
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const verified = location.state?.verified;
 
-  function validateUsername(v) {
-    return v.length >= 1 && v.length <= 20 && !/[\s-]/.test(v);
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!validateUsername(username)) {
-      setError('Username must be 1–20 characters with no spaces or hyphens.');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
-      const data = await loginApi(username, password);
+      const data = await loginApi(email, password);
       login(data);
       navigate('/pantry');
     } catch (err) {
-      setError(err.message || 'Invalid username or password.');
+      setError(err.message || 'Invalid email or password.');
     } finally {
       setLoading(false);
     }
@@ -51,13 +43,12 @@ export default function Login() {
         {error && <p className="auth-error">{error}</p>}
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <label>Username</label>
+          <label>Email</label>
           <input
-            type="text"
-            placeholder="Your username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            maxLength={20}
+            type="email"
+            placeholder="your@email.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
             autoFocus
           />

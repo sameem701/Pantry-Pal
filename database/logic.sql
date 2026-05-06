@@ -38,6 +38,7 @@
 -- 1.1  Register step-1: store temp record + verification code
 CREATE OR REPLACE FUNCTION register_user_temp(
     p_email             VARCHAR(255),
+    p_display_name      VARCHAR(15),
     p_password_hash     VARCHAR(255),
     p_verification_code VARCHAR(6)
 )
@@ -47,10 +48,11 @@ BEGIN
         RETURN json_build_object('success', false, 'message', 'Email already registered');
     END IF;
 
-    INSERT INTO temp_users (email, password_hash, verification_code, created_at)
-    VALUES (p_email, p_password_hash, p_verification_code, CURRENT_TIMESTAMP)
+    INSERT INTO temp_users (email, display_name, password_hash, verification_code, created_at)
+    VALUES (p_email, p_display_name, p_password_hash, p_verification_code, CURRENT_TIMESTAMP)
     ON CONFLICT (email) DO UPDATE
-        SET password_hash     = EXCLUDED.password_hash,
+        SET display_name      = EXCLUDED.display_name,
+            password_hash     = EXCLUDED.password_hash,
             verification_code = EXCLUDED.verification_code,
             created_at        = CURRENT_TIMESTAMP;
 
@@ -85,17 +87,18 @@ BEGIN
         RETURN json_build_object('success', false, 'message', 'Invalid verification code');
     END IF;
 
-    INSERT INTO app_users (email, password_hash)
-    VALUES (v_temp.email, v_temp.password_hash)
+    INSERT INTO app_users (email, display_name, password_hash)
+    VALUES (v_temp.email, v_temp.display_name, v_temp.password_hash)
     RETURNING user_id INTO v_uid;
 
     DELETE FROM temp_users WHERE email = p_email;
 
     RETURN json_build_object(
-        'success', true,
-        'message', 'Account created successfully',
-        'user_id', v_uid,
-        'email',   p_email
+        'success',      true,
+        'message',      'Account created successfully',
+        'user_id',      v_uid,
+        'email',        p_email,
+        'display_name', v_temp.display_name
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -118,11 +121,12 @@ BEGIN
     END IF;
 
     RETURN json_build_object(
-        'success',     true,
-        'message',     'Login successful',
-        'user_id',     v_user.user_id,
-        'email',       v_user.email,
-        'skill_level', v_user.skill_level
+        'success',      true,
+        'message',      'Login successful',
+        'user_id',      v_user.user_id,
+        'email',        v_user.email,
+        'display_name', v_user.display_name,
+        'skill_level',  v_user.skill_level
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -204,6 +208,7 @@ BEGIN
         'success',             true,
         'user_id',             v_user.user_id,
         'email',               v_user.email,
+        'display_name',        v_user.display_name,
         'skill_level',         v_user.skill_level,
         'created_at',          v_user.created_at,
         'dietary_preferences', COALESCE(v_prefs,    '[]'::JSON),

@@ -58,6 +58,7 @@ DROP FUNCTION IF EXISTS trg_seed_recipe_stats() CASCADE;
 CREATE TABLE app_users (
     user_id       SERIAL       PRIMARY KEY,
     email         VARCHAR(255) UNIQUE NOT NULL,
+    display_name  VARCHAR(15)  NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     skill_level   VARCHAR(20)  DEFAULT 'Beginner',
     CONSTRAINT check_skill_level CHECK (skill_level IN ('Beginner','Intermediate','Advanced')),
@@ -68,6 +69,7 @@ CREATE TABLE app_users (
 -- Holds unverified registrations; row deleted once user verifies email
 CREATE TABLE temp_users (
     email             VARCHAR(255) PRIMARY KEY,
+    display_name      VARCHAR(15)  NOT NULL,
     password_hash     VARCHAR(255) NOT NULL,
     verification_code VARCHAR(6)   NOT NULL,
     created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP

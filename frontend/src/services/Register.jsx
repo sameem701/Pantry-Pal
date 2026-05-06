@@ -4,8 +4,12 @@ import { register, verifyEmail } from '../api/UserApi';
 import { Utensils } from 'lucide-react';
 import './Auth.css';
 
-function validateUsername(v) {
-  return v.length >= 1 && v.length <= 20 && !/[\s-]/.test(v);
+function validateEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function validateDisplayName(v) {
+  return v.length >= 1 && v.length <= 15;
 }
 
 function CodeInput({ onChange }) {
@@ -63,7 +67,8 @@ function CodeInput({ onChange }) {
 export default function Register() {
   const navigate = useNavigate();
   const [step, setStep] = useState('form'); // 'form' | 'verify'
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -71,15 +76,19 @@ export default function Register() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!validateUsername(username)) {
-      setError('Username must be 1–20 characters with no spaces or hyphens.');
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (!validateDisplayName(displayName)) {
+      setError('Display name must be 1–15 characters.');
       return;
     }
     if (password !== confirm) { setError('Passwords do not match.'); return; }
     setLoading(true);
     setError('');
     try {
-      await register(username, password, confirm);
+      await register(email, displayName, password, confirm);
       setStep('verify');
     } catch (err) {
       setError(err.message || 'Registration failed.');
@@ -89,7 +98,7 @@ export default function Register() {
   }
 
   if (step === 'verify') {
-    return <VerifyStep username={username} />;
+    return <VerifyStep email={email} />;
   }
 
   return (
@@ -102,28 +111,37 @@ export default function Register() {
         {error && <p className="auth-error">{error}</p>}
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <label>Username</label>
+          <label>Email</label>
           <input
-            type="text"
-            placeholder="Choose a username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            maxLength={20}
+            type="email"
+            placeholder="your@email.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
             autoFocus
           />
-          {username && !validateUsername(username) && (
-            <span className="auth-field-hint">Max 20 chars, no spaces or hyphens</span>
+
+          <label>Display Name</label>
+          <input
+            type="text"
+            placeholder="How should we call you?"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={15}
+            required
+          />
+          {displayName && !validateDisplayName(displayName) && (
+            <span className="auth-field-hint">Max 15 characters</span>
           )}
 
           <label>Password</label>
           <input
             type="password"
-            placeholder="At least 8 characters"
+            placeholder="At least 6 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={6}
           />
 
           <label>Confirm Password</label>
@@ -148,7 +166,7 @@ export default function Register() {
   );
 }
 
-function VerifyStep({ username }) {
+function VerifyStep({ email }) {
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -160,7 +178,7 @@ function VerifyStep({ username }) {
     setLoading(true);
     setError('');
     try {
-      await verifyEmail(username, code);
+      await verifyEmail(email, code);
       navigate('/login', { state: { verified: true } });
     } catch (err) {
       setError(err.message || 'Invalid or expired code.');
@@ -173,8 +191,8 @@ function VerifyStep({ username }) {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo"><Utensils size={22} style={{ verticalAlign: 'middle', marginRight: 6 }} />PantryPal</div>
-        <h1 className="auth-title">Verify your account</h1>
-        <p className="auth-sub">We sent a 6-digit code to <strong>{username}</strong></p>
+        <h1 className="auth-title">Verify your email</h1>
+        <p className="auth-sub">We sent a 6-digit code to <strong>{email}</strong></p>
 
         {error && <p className="auth-error">{error}</p>}
 
