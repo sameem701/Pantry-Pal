@@ -12,6 +12,20 @@
   margin-bottom: 28px;
 }
 .cr-back { align-self: flex-start; }
+.cr-delete-btn { margin-left: auto; }
+
+.btn-danger {
+  background: transparent;
+  color: var(--accent-red, #e53e3e);
+  border: 1.5px solid var(--accent-red, #e53e3e);
+  border-radius: var(--radius-sm, 8px);
+  padding: 8px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.btn-danger:hover { background: var(--accent-red, #e53e3e); color: #fff; }
 
 /* ── Section ─────────────────────────────────────────────────────────────────── */
 .cr-section {
@@ -69,7 +83,7 @@
 }
 .cr-ing-row {
   display: grid;
-  grid-template-columns: 1fr 90px 90px 36px;
+  grid-template-columns: 1fr 75px 105px 32px;
   gap: 10px;
   margin-bottom: 10px;
   align-items: center;
@@ -192,3 +206,61 @@
 .cr-photo-inputs    { display: flex; flex-direction: column; gap: 8px; }
 .cr-photo-upload    { display: flex; align-items: center; gap: 10px; }
 .cr-photo-hint      { font-size: 0.78rem; color: var(--text-muted, #888); }
+
+/* ── Unit select (same height as qty input) ──────────────────────────────── */
+.cr-ing-unit { width: 100%; }
+
+/* ── Save as Draft button ──────────────────────────────────────────── */
+.cr-draft-btn {
+  border-style: dashed;
+}
+
+/* ── Draft prompt overlay ──────────────────────────────────────────── */
+.cr-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.cr-draft-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 32px 28px 24px;
+  max-width: 420px;
+  width: 90%;
+  position: relative;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+}
+.cr-draft-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+  line-height: 1;
+  padding: 2px 6px;
+}
+.cr-draft-close:hover { color: var(--text-heading, #1a1a2e); }
+.cr-draft-modal-title {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-heading, #1a1a2e);
+}
+.cr-draft-modal-body {
+  font-size: 0.9rem;
+  color: var(--text-body, #444);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+.cr-draft-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}

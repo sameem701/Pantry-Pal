@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getSavedLists, clearList, toggleListItem, markAllListItems, saveLists } from '../utils/shoppingListStore';
+import { getSavedLists, clearList, toggleListItem, markAllListItems, saveLists } from '../utils/shoppingListStore'; // saveLists still used by handleMarkAll
 import { addPantryItem, searchIngredients } from '../api/PantryApi';
 import './ShoppingList.css';
 
@@ -16,31 +16,11 @@ export default function ShoppingList() {
   const [lists,          setLists]          = useState(() => getSavedLists());
   const [openId,         setOpenId]         = useState(null);
   const [addingIdx,      setAddingIdx]      = useState(null);
-  const [pantryNames,    setPantryNames]    = useState(new Set());
   const [confirmMarkAll, setConfirmMarkAll] = useState(null);
-  const [cascadeBumps,   setCascadeBumps]   = useState({}); // { [listId]: { count, key } }
-  const pendingRef      = useRef({});
-  const bumpKeyRef      = useRef(0);
-  const openIdRef       = useRef(null);     // mirrors openId for use inside async callbacks
-  const pantryNamesRef  = useRef(new Set());
-  const deferredBumps   = useRef({});       // bumps to show after the open card closes
+  const pendingRef = useRef({});
 
   function changeOpenId(id) {
-    const closing = openIdRef.current;
-    openIdRef.current = id;
     setOpenId(id);
-    // When minimising, show any bumps that were deferred while a card was open
-    if (!id || id !== closing) {
-      const toShow = deferredBumps.current;
-      deferredBumps.current = {};
-      if (Object.keys(toShow).length) {
-        const bumps = {};
-        for (const [lid, count] of Object.entries(toShow))
-          bumps[lid] = { count, key: ++bumpKeyRef.current };
-        setCascadeBumps(bumps);
-        setTimeout(() => setCascadeBumps({}), 3900);
-      }
-    }
   }
 
   // Load pantry on mount so we can auto-check items already owned
@@ -51,66 +31,13 @@ export default function ShoppingList() {
   useEffect(() => {
     if (!userId) return;
     import('../api/PantryApi').then(({ getPantry }) => {
-      getPantry(userId)
-        .then(data => {
-          const items = Array.isArray(data?.items) ? data.items
-                      : Array.isArray(data?.data)  ? data.data
-                      : Array.isArray(data)        ? data : [];
-          const names = new Set(items.map(i =>
-            (i.ingredient_name || i.name || '').toLowerCase().trim()
-          ));
-          setPantryNames(names);
-          cascadeCheck(Array.from(names), false);
-        })
-        .catch(() => {});
+      getPantry(userId).catch(() => {});
     });
   }, [userId]);
 
   function handleDelete(listId) {
     setLists(clearList(listId));
     if (openId === listId) changeOpenId(null);
-  }
-
-  // ── cascade-check: auto-check matching items across all incomplete lists, optionally show +N badge
-  function cascadeCheck(addedNamesArray, showBump = true) {
-    const addedSet = new Set(addedNamesArray.map(n => (n || '').toLowerCase().trim()).filter(Boolean));
-    if (!addedSet.size) return;
-    setLists(prev => {
-      const rawBumps = {};
-      const next = prev.map(list => {
-        // Never auto-check into a fully completed list
-        if (list.items.length > 0 && list.items.every(i => i.is_checked)) return list;
-        let bumped = 0;
-        const items = list.items.map(item => {
-          if (item.is_checked) return item;
-          const nm = (item.ingredient_name || item.name || '').toLowerCase().trim();
-          if (addedSet.has(nm)) { bumped++; return { ...item, is_checked: true }; }
-          return item;
-        });
-        if (bumped > 0) rawBumps[list.id] = bumped;
-        return bumped > 0 ? { ...list, items } : list;
-      });
-      // Persist cascade-checked state so it survives navigation
-      if (Object.keys(rawBumps).length > 0) saveLists(next);
-      if (Object.keys(rawBumps).length > 0 && showBump) {
-        requestAnimationFrame(() => {
-          const immediate = {};
-          for (const [id, count] of Object.entries(rawBumps)) {
-            if (openIdRef.current === id) {
-              // card is open/expanded — defer until it closes
-              deferredBumps.current[id] = (deferredBumps.current[id] || 0) + count;
-            } else {
-              immediate[id] = { count, key: ++bumpKeyRef.current };
-            }
-          }
-          if (Object.keys(immediate).length) {
-            setCascadeBumps(immediate);
-            setTimeout(() => setCascadeBumps({}), 3900);
-          }
-        });
-      }
-      return next;
-    });
   }
 
   // ── resolve ingredient and add to pantry ─────────────────────────────────
@@ -146,7 +73,6 @@ export default function ShoppingList() {
       setAddingIdx({ listId, idx });
       try {
         await resolveAndAdd(item);
-        cascadeCheck([item.ingredient_name || item.name]);
       } catch (err) {
         addToast(err.message || 'Could not add to pantry', 'warning');
         // revert check on failure and persist the revert
@@ -215,7 +141,6 @@ export default function ShoppingList() {
     }
     if (added > 0) {
       addToast(added + ' item' + (added !== 1 ? 's' : '') + ' added to pantry!', 'success');
-      cascadeCheck(addedNames);
     }
     if (failed > 0) addToast(failed + ' item' + (failed !== 1 ? 's' : '') + ' could not be added.', 'warning');
   }
@@ -268,11 +193,6 @@ export default function ShoppingList() {
     const isOpen    = openId === list.id;
     return (
             <div key={list.id} className={'sl-paper-wrap' + (isOpen ? ' sl-wrap--open' : '')}>
-              {cascadeBumps[list.id] != null && (
-                <div className="sl-cascade-bump" key={cascadeBumps[list.id].key}>
-                  +{cascadeBumps[list.id].count}
-                </div>
-              )}
               <div className={'sl-paper' + (isOpen ? ' sl-paper--open' : '')}>
 
               {/* ── collapsed face ───────────────────────────────────────── */}

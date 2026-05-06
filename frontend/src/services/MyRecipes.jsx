@@ -12,10 +12,11 @@ export default function MyRecipes() {
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [recipes, setRecipes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [recipes,       setRecipes]       = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null); // { recipeId, title }
+  const [showDrafts,    setShowDrafts]    = useState(true);
 
   useEffect(() => {
     if (!userId) return;
@@ -68,18 +69,23 @@ export default function MyRecipes() {
         </div>
       )}
 
-      {!loading && recipes.length > 0 && (
-        <div className="recipe-grid">
-          {recipes.map(recipe => (
+      {!loading && (() => {
+        const published = recipes.filter(r => r.status !== 'draft');
+        const drafts    = recipes.filter(r => r.status === 'draft');
+
+        function renderCard(recipe, isDraft = false) {
+          return (
             <div
               key={recipe.recipe_id}
-              className="recipe-card"
-              onClick={() => navigate(`/recipes/${recipe.recipe_id}`)}
+              className={'recipe-card' + (isDraft ? ' recipe-card--draft' : '')}
+              onClick={() => navigate(isDraft ? `/recipes/${recipe.recipe_id}/edit` : `/recipes/${recipe.recipe_id}`)}
+              title={isDraft ? 'Draft — click to continue editing' : undefined}
             >
               {recipe.image_url
                 ? <div className="card-img-wrap"><img src={recipe.image_url} alt={recipe.title} className="card-img" loading="lazy" /></div>
                 : <div className="card-img-placeholder">{String.fromCodePoint(0x1F37D)}</div>
               }
+              {isDraft && <span className="recipe-draft-badge">Draft</span>}
               <div className="card-body">
                 <div className="card-top">
                   <h3 className="card-title">{recipe.title}</h3>
@@ -103,20 +109,48 @@ export default function MyRecipes() {
                     <span className="badge badge-time">{String.fromCodePoint(0x23F1)} {recipe.cooking_time || recipe.prep_time_minutes}m</span>
                   )}
                 </div>
-                {recipe.average_rating > 0 && (
+                {!isDraft && recipe.average_rating > 0 && (
                   <div className="card-rating">
                     {'★'.repeat(Math.round(recipe.average_rating))}{'☆'.repeat(5 - Math.round(recipe.average_rating))}
                     <span className="rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
                   </div>
                 )}
-                {recipe.save_count != null && (
+                {!isDraft && recipe.save_count != null && (
                   <p className="saved-count">{String.fromCodePoint(0x2665)} {recipe.save_count} save{recipe.save_count !== 1 ? 's' : ''}</p>
                 )}
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        }
+
+        return (
+          <>
+            {published.length > 0 && (
+              <div className="recipe-grid">
+                {published.map(r => renderCard(r, false))}
+              </div>
+            )}
+
+            {drafts.length > 0 && (
+              <div className="my-recipes-drafts-section">
+                <button
+                  className="my-recipes-drafts-toggle"
+                  onClick={() => setShowDrafts(v => !v)}
+                >
+                  <span>Drafts</span>
+                  <span className="my-recipes-drafts-count">{drafts.length}</span>
+                  <span className="my-recipes-drafts-chevron">{showDrafts ? '▲' : '▼'}</span>
+                </button>
+                {showDrafts && (
+                  <div className="recipe-grid recipe-grid--drafts">
+                    {drafts.map(r => renderCard(r, true))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {confirmDelete && (
         <ConfirmModal

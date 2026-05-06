@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 're
 import { Component, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { navGuardRef } from './utils/navGuard';
 import './App.css';
 
 // ── pages ─────────────────────────────────────────────────────────────────────
@@ -73,6 +74,12 @@ function Sidebar() {
             key={to}
             to={to}
             className={({ isActive }) => 'sidebar-item' + (isActive ? ' active' : '')}
+            onClick={(e) => {
+              if (navGuardRef.current) {
+                const allowed = navGuardRef.current(to);
+                if (allowed === false) e.preventDefault();
+              }
+            }}
           >
             <span className="sidebar-icon">{icon}</span>
             <span className="sidebar-label">{label}</span>

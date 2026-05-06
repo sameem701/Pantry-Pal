@@ -386,6 +386,31 @@ const normalizeRecipePayload = (data = {}) => {
   };
 };
 
+// Direct query for a user's own recipes — includes both published and draft,
+// and returns r.status so the frontend can split the two.
+// This avoids any changes to the browse_recipes SQL stored procedure.
+const getMyRecipes = async (userId) => {
+  const { rows } = await pool.query(
+    `SELECT
+       r.recipe_id,
+       r.title,
+       r.difficulty,
+       r.cooking_time_min AS cooking_time,
+       r.image_url,
+       r.status,
+       r.created_at,
+       COALESCE(rs.average_rating, 0) AS average_rating,
+       COALESCE(rs.total_reviews, 0)  AS total_reviews,
+       COALESCE(rs.favourite_count, 0) AS favourite_count
+     FROM recipes r
+     LEFT JOIN recipe_stats rs ON rs.recipe_id = r.recipe_id
+     WHERE r.user_id = $1
+     ORDER BY r.created_at DESC`,
+    [userId]
+  );
+  return rows;
+};
+
 const getAllRecipes = async (filters = {}) => {
   const result = await browseRecipes(
     toNumber(filters.userId ?? filters.user_id ?? filters.viewerId),
@@ -807,6 +832,13 @@ const getCookingSessionHandler = async (req, res) => {
 
 const getAll = async (req, res) => {
   try {
+    const { user_id, creator_id } = req.query;
+    // "My Recipes" mode: owner fetching their own recipes.
+    // Use a direct query so drafts are included (browse_recipes only returns published).
+    if (user_id && creator_id && toNumber(user_id) === toNumber(creator_id)) {
+      const recipes = await getMyRecipes(toNumber(user_id));
+      return res.status(200).json({ success: true, data: recipes });
+    }
     const recipes = await getAllRecipes(req.query);
     return res.status(200).json({ success: true, data: recipes });
   } catch (error) {
@@ -819,7 +851,7 @@ const create = async (req, res) => {
     const recipe = await createRecipe(req.body);
     return res.status(201).json({ success: true, data: recipe });
   } catch (error) {
-    return res.status(400).json({ success: false, error: error.message });
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -828,7 +860,7 @@ const update = async (req, res) => {
     const recipe = await updateRecipe(Number(req.params.id), req.body);
     return res.status(200).json({ success: true, data: recipe });
   } catch (error) {
-    return res.status(400).json({ success: false, error: error.message });
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 
@@ -836,11 +868,11 @@ const remove = async (req, res) => {
   try {
     await deleteRecipe(
       Number(req.params.id),
-      req.body.userId ?? req.body.authorId ?? req.query.userId
+      req.body.userId ?? req.body.authorId ?? req.body.user_id ?? req.query.userId ?? req.query.user_id
     );
     return res.status(200).json({ success: true, message: 'Recipe deleted' });
   } catch (error) {
-    return res.status(400).json({ success: false, error: error.message });
+    return res.status(400).json({ success: false, message: error.message });
   }
 };
 

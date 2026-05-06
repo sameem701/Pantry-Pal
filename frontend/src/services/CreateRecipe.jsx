@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { navGuardRef } from '../utils/navGuard';
 import {
   getRecipeDetails,
   createRecipe,
@@ -12,8 +13,17 @@ import {
 import { searchIngredients } from '../api/PantryApi';
 import './CreateRecipe.css';
 
+const UNIT_OPTIONS = [
+  '', 'g', 'kg', 'mg',
+  'ml', 'l',
+  'tsp', 'tbsp', 'cup',
+  'oz', 'fl oz', 'lb',
+  'piece', 'slice', 'clove', 'pinch', 'bunch', 'sprig',
+  'can', 'pkg', 'sheet',
+];
+
 // ── ingredient row ────────────────────────────────────────────────────────────
-function IngredientRow({ item, index, onChange, onRemove }) {
+function IngredientRow({ item, index, onChange, onRemove, total }) {
   const [query, setQuery]       = useState(item.ingredient_name || '');
   const [results, setResults]   = useState([]);
   const [showDrop, setShowDrop] = useState(false);
@@ -76,19 +86,24 @@ function IngredientRow({ item, index, onChange, onRemove }) {
         value={item.quantity ?? ''}
         onChange={e => onChange(index, { quantity: e.target.value })}
       />
-      <input
-        className="form-input cr-ing-unit"
-        placeholder="Unit"
+      <select
+        className="form-select cr-ing-unit"
         value={item.unit ?? ''}
         onChange={e => onChange(index, { unit: e.target.value })}
-      />
-      <button type="button" className="cr-remove-btn" onClick={() => onRemove(index)}>×</button>
+      >
+        {UNIT_OPTIONS.map(u => (
+          <option key={u} value={u}>{u === '' ? '— unit —' : u}</option>
+        ))}
+      </select>
+      {total > 1 && (
+        <button type="button" className="cr-remove-btn" onClick={() => onRemove(index)}>×</button>
+      )}
     </div>
   );
 }
 
 // ── step row ──────────────────────────────────────────────────────────────────
-function StepRow({ step, index, onChange, onRemove }) {
+function StepRow({ step, index, onChange, onRemove, total }) {
   return (
     <div className="cr-step-row">
       <span className="cr-step-num">{index + 1}</span>
@@ -99,7 +114,9 @@ function StepRow({ step, index, onChange, onRemove }) {
         onChange={e => onChange(index, e.target.value)}
         rows={2}
       />
-      <button type="button" className="cr-remove-btn" onClick={() => onRemove(index)}>×</button>
+      {total > 1 && (
+        <button type="button" className="cr-remove-btn" onClick={() => onRemove(index)}>×</button>
+      )}
     </div>
   );
 }
@@ -113,18 +130,34 @@ export default function CreateRecipe() {
   const userId         = user?.user_id;
   const isEdit         = Boolean(editId);
 
-  function handlePhotoChange(e) {
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  async function handlePhotoChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { addToast('Please select an image file', 'error'); return; }
+
+    // Show a local preview immediately while uploading
     const reader = new FileReader();
     reader.onload = ev => setImagePreview(ev.target.result);
     reader.readAsDataURL(file);
-    // Use the filename as a hint; actual URL must be hosted externally or you can use data URL
-    // For now, set imageUrl to data URL so it shows in the recipe card locally
-    const fReader = new FileReader();
-    fReader.onload = ev => setImageUrl(ev.target.result);
-    fReader.readAsDataURL(file);
+
+    // Upload to backend
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch('/api/upload/recipe-image', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Upload failed');
+      setImageUrl(data.url);   // e.g. /uploads/recipe-123456.jpg
+      addToast('Photo uploaded!', 'success');
+    } catch (err) {
+      addToast(err.message || 'Photo upload failed', 'error');
+      setImagePreview('');     // clear preview if upload failed
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   // form state
@@ -135,8 +168,6 @@ export default function CreateRecipe() {
   const [imageUrl, setImageUrl]     = useState('');
   const [imagePreview, setImagePreview] = useState('');  // local data URL preview
   const fileInputRef = useRef(null);
-  const [status, setStatus]         = useState('published');
-
   const [ingredients, setIngredients] = useState([{ ingredient_id: null, ingredient_name: '', quantity: '', unit: '' }]);
   const [steps, setSteps]           = useState([{ instruction_text: '' }]);
 
@@ -152,6 +183,54 @@ export default function CreateRecipe() {
 
   const [saving, setSaving]   = useState(false);
   const [loadErr, setLoadErr] = useState('');
+  // Track the original status of the recipe being edited ('draft' | 'published' | null for new)
+  const [currentStatus, setCurrentStatus] = useState(null);
+
+  // ── dirty tracking & draft-prompt ────────────────────────────────────
+  const isDirtyRef        = useRef(false);
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
+  const blockedNavRef     = useRef(null);
+  function markDirty() { isDirtyRef.current = true; }
+
+  // Push a sentinel state so the browser back button can be intercepted
+  useEffect(() => {
+    window.history.pushState({ crGuard: true }, '');
+    function onPopState(e) {
+      if (!isDirtyRef.current) return; // let normal nav happen
+      // Re-push so we stay on the page
+      window.history.pushState({ crGuard: true }, '');
+      blockedNavRef.current = { proceed: () => navigate(-2), reset: () => {} };
+      setShowDraftPrompt(true);
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [navigate]);
+
+  // Register the sidebar nav guard so NavLink clicks are intercepted when dirty
+  useEffect(() => {
+    navGuardRef.current = (dest) => {
+      if (!isDirtyRef.current) return true;
+      blockedNavRef.current = { proceed: () => navigate(dest), reset: () => {} };
+      setShowDraftPrompt(true);
+      return false;
+    };
+    return () => { navGuardRef.current = null; };
+  }, [navigate]);
+
+  useEffect(() => {
+    function onBeforeUnload(e) {
+      if (!isDirtyRef.current) return;
+      e.preventDefault(); e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  function handleTryNavigate(dest) {
+    if (!isDirtyRef.current) { navigate(dest); return; }
+    blockedNavRef.current = { proceed: () => navigate(dest), reset: () => {} };
+    setShowDraftPrompt(true);
+  }
 
   // load options + existing recipe (edit mode)
   useEffect(() => {
@@ -174,7 +253,7 @@ export default function CreateRecipe() {
         setDifficulty(r.difficulty ?? 'Medium');
         setCookingTime(r.cooking_time ?? r.cooking_time_min ?? 30);
         setImageUrl(r.image_url ?? '');
-        setStatus(r.status ?? 'published');
+        setCurrentStatus(r.status ?? 'published');
         const ings = Array.isArray(r.ingredients) ? r.ingredients : [];
         setIngredients(ings.length ? ings.map(i => ({
           ingredient_id: i.ingredient_id,
@@ -182,7 +261,7 @@ export default function CreateRecipe() {
           quantity: i.required_qty ?? i.quantity ?? '',
           unit: i.unit ?? '',
         })) : [{ ingredient_id: null, ingredient_name: '', quantity: '', unit: '' }]);
-        const ss = Array.isArray(r.steps) ? r.steps : [];
+        const ss = Array.isArray(r.instructions) ? r.instructions : [];
         setSteps(ss.length ? ss.map(s => ({ instruction_text: s.instruction_text || '' }))
                            : [{ instruction_text: '' }]);
         setCuisineIds((r.cuisines ?? []).map(c => c.cuisine_id));
@@ -227,12 +306,30 @@ export default function CreateRecipe() {
     setList(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  // statusOverride: 'published' | 'draft'
+  async function handleSubmit(e, statusOverride = 'published') {
+    if (e && e.preventDefault) e.preventDefault();
     if (!title.trim()) { addToast('Title is required', 'error'); return; }
-    if (steps.some(s => !s.instruction_text.trim())) {
-      addToast('All steps must have instructions', 'error'); return;
+
+    // Extra validation only when publishing
+    if (statusOverride !== 'draft') {
+      if (!['Easy', 'Medium', 'Hard'].includes(difficulty)) {
+        addToast('Please select a difficulty level', 'error'); return;
+      }
+      const hasIngredient = ingredients.some(i => i.ingredient_id);
+      if (!hasIngredient) {
+        addToast('Add at least one ingredient before publishing', 'error'); return;
+      }
+      const hasStep = steps.some(s => s.instruction_text.trim());
+      if (!hasStep) {
+        addToast('Add at least one instruction step before publishing', 'error'); return;
+      }
+      if (steps.some(s => !s.instruction_text.trim())) {
+        addToast('All steps must have instructions', 'error'); return;
+      }
     }
+
+    const safeImageUrl = imageUrl.trim() || undefined;
 
     const payload = {
       userId,
@@ -240,8 +337,8 @@ export default function CreateRecipe() {
       description: description.trim() || undefined,
       difficulty,
       cookingTime: Number(cookingTime) || 30,
-      imageUrl: imageUrl.trim() || undefined,
-      status,
+      imageUrl: safeImageUrl,
+      status: statusOverride,
       ingredients: ingredients
         .filter(i => i.ingredient_id)
         .map(i => ({ ingredient_id: i.ingredient_id, quantity: Number(i.quantity) || 0, unit: i.unit })),
@@ -258,19 +355,64 @@ export default function CreateRecipe() {
 
     setSaving(true);
     try {
+      isDirtyRef.current = false;
       if (isEdit) {
         await updateRecipe(editId, payload);
-        addToast('Recipe updated!', 'success');
+        addToast(statusOverride === 'draft' ? 'Saved as draft!' : 'Recipe updated!', 'success');
         navigate(`/recipes/${editId}`);
       } else {
         const res = await createRecipe(payload);
-        addToast('Recipe created!', 'success');
+        addToast(statusOverride === 'draft' ? 'Saved as draft!' : 'Recipe created!', 'success');
         navigate(`/recipes/${res?.recipe_id ?? ''}`);
       }
     } catch (err) {
+      isDirtyRef.current = true;
       addToast(err.message || 'Failed to save recipe', 'error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveDraftAndLeave() {
+    setShowDraftPrompt(false);
+    // For published recipes, "Save Changes" keeps them published; for new/draft, save as draft
+    const saveStatus = (isEdit && currentStatus !== 'draft') ? 'published' : 'draft';
+    await handleSubmit(null, saveStatus);
+    blockedNavRef.current?.proceed?.();
+  }
+  function handleDiscardAndLeave() {
+    setShowDraftPrompt(false);
+    isDirtyRef.current = false;
+    blockedNavRef.current?.proceed?.();
+  }
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDeleteRecipe() {
+    setConfirmDelete(false);
+    isDirtyRef.current = false;
+    try {
+      const { deleteRecipe: apiDelete } = await import('../api/RecipeApi');
+      await apiDelete(editId, userId);
+      addToast('Recipe deleted.', 'success');
+      navigate('/my-recipes');
+    } catch (err) {
+      addToast(err.message || 'Failed to delete recipe', 'error');
+    }
+  }
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDeleteRecipe() {
+    setConfirmDelete(false);
+    isDirtyRef.current = false;
+    try {
+      const { deleteRecipe: apiDelete } = await import('../api/RecipeApi');
+      await apiDelete(editId, userId);
+      addToast('Recipe deleted.', 'success');
+      navigate('/my-recipes');
+    } catch (err) {
+      addToast(err.message || 'Failed to delete recipe', 'error');
     }
   }
 
@@ -284,8 +426,13 @@ export default function CreateRecipe() {
   return (
     <div className="cr-shell">
       <div className="cr-header">
-        <button className="btn-secondary cr-back" onClick={() => navigate(-1)}>← Back</button>
+        <button className="btn-secondary cr-back" onClick={() => handleTryNavigate(-1)}>← Back</button>
         <h1 className="page-title">{isEdit ? 'Edit Recipe' : 'Create Recipe'}</h1>
+        {isEdit && (
+          <button type="button" className="btn-danger cr-delete-btn" onClick={() => setConfirmDelete(true)}>
+            Delete Recipe
+          </button>
+        )}
       </div>
 
       <form className="cr-form" onSubmit={handleSubmit}>
@@ -295,15 +442,15 @@ export default function CreateRecipe() {
           <div className="cr-row-2">
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Title *</label>
-              <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Recipe name" />
+              <input className="form-input" value={title} onChange={e => { setTitle(e.target.value); markDirty(); }} placeholder="Recipe name" />
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Description</label>
-              <textarea className="form-textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="Short description…" rows={3} />
+              <textarea className="form-textarea" value={description} onChange={e => { setDescription(e.target.value); markDirty(); }} placeholder="Short description…" rows={3} />
             </div>
             <div className="form-group">
               <label className="form-label">Difficulty</label>
-              <select className="form-select" value={difficulty} onChange={e => setDifficulty(e.target.value)}>
+              <select className="form-select" value={difficulty} onChange={e => { setDifficulty(e.target.value); markDirty(); }}>
                 <option>Easy</option>
                 <option>Medium</option>
                 <option>Hard</option>
@@ -311,14 +458,7 @@ export default function CreateRecipe() {
             </div>
             <div className="form-group">
               <label className="form-label">Cooking Time (min)</label>
-              <input className="form-input" type="number" min={1} value={cookingTime} onChange={e => setCookingTime(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
-                <option value="published">Published</option>
-                <option value="draft">Draft</option>
-              </select>
+              <input className="form-input" type="number" min={1} value={cookingTime} onChange={e => { setCookingTime(e.target.value); markDirty(); }} />
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Photo (optional)</label>
@@ -329,20 +469,12 @@ export default function CreateRecipe() {
                     <button type="button" className="cr-remove-photo" onClick={() => { setImageUrl(''); setImagePreview(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}>Remove</button>
                   </div>
                 )}
-                <div className="cr-photo-inputs">
-                  <div className="cr-photo-upload">
-                    <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()}>Upload Photo</button>
-                    <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
-                    <span className="cr-photo-hint">JPG, PNG, WebP &mdash; or paste a URL below</span>
-                  </div>
-                  <input
-                    className="form-input"
-                    type="url"
-                    value={imagePreview ? '' : imageUrl}
-                    onChange={e => { setImageUrl(e.target.value); setImagePreview(''); }}
-                    placeholder="Or paste image URL: https://..."
-                    disabled={!!imagePreview}
-                  />
+                <div className="cr-photo-upload">
+                  <button type="button" className="btn-secondary" disabled={uploadingPhoto} onClick={() => fileInputRef.current?.click()}>
+                    {uploadingPhoto ? 'Uploading…' : 'Upload Photo'}
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }} onChange={handlePhotoChange} />
+                  <span className="cr-photo-hint">JPG, PNG, WebP — max 5 MB</span>
                 </div>
               </div>
             </div>
@@ -365,6 +497,7 @@ export default function CreateRecipe() {
               index={i}
               onChange={updateIngredient}
               onRemove={removeIngredient}
+              total={ingredients.length}
             />
           ))}
           {ingredients.length === 0 && (
@@ -379,7 +512,7 @@ export default function CreateRecipe() {
             <button type="button" className="btn-secondary cr-add-btn" onClick={addStep}>+ Add Step</button>
           </div>
           {steps.map((step, i) => (
-            <StepRow key={i} step={step} index={i} onChange={updateStep} onRemove={removeStep} />
+            <StepRow key={i} step={step} index={i} onChange={updateStep} onRemove={removeStep} total={steps.length} />
           ))}
           {steps.length === 0 && (
             <p className="cr-empty-hint">No steps yet — click "+ Add Step" to begin.</p>
@@ -436,12 +569,66 @@ export default function CreateRecipe() {
 
         {/* ── Submit ── */}
         <div className="cr-footer">
-          <button type="button" className="btn-secondary" onClick={() => navigate(-1)}>Cancel</button>
+          <button type="button" className="btn-secondary" onClick={() => handleTryNavigate(-1)}>Cancel</button>
+          {/* New recipe OR editing a draft: show Save as Draft + Publish */}
+          {(!isEdit || currentStatus === 'draft') && (
+            <button
+              type="button"
+              className="btn-secondary cr-draft-btn"
+              disabled={saving}
+              onClick={() => handleSubmit(null, 'draft')}
+            >{saving ? 'Saving…' : 'Save as Draft'}</button>
+          )}
           <button type="submit" className="btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Publish Recipe'}
+            {saving ? 'Saving…' : (isEdit && currentStatus !== 'draft') ? 'Save Changes' : 'Publish Recipe'}
           </button>
         </div>
       </form>
+
+      {showDraftPrompt && (
+        <div className="cr-overlay">
+          <div className="cr-draft-modal">
+            <button className="cr-draft-close" onClick={() => { setShowDraftPrompt(false); blockedNavRef.current?.reset?.(); }}>×</button>
+            {/* For published recipes being edited, offer Save Changes; for new/draft offer Save as Draft */}
+            {isEdit && currentStatus !== 'draft' ? (
+              <>
+                <h3 className="cr-draft-modal-title">Save changes?</h3>
+                <p className="cr-draft-modal-body">You have unsaved changes. Save them before leaving?</p>
+                <div className="cr-draft-modal-actions">
+                  <button className="btn-secondary" onClick={handleDiscardAndLeave}>Don't Save</button>
+                  <button className="btn-primary" onClick={handleSaveDraftAndLeave} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="cr-draft-modal-title">Save as draft?</h3>
+                <p className="cr-draft-modal-body">You have unsaved changes. Save this recipe as a draft before leaving?</p>
+                <div className="cr-draft-modal-actions">
+                  <button className="btn-secondary" onClick={handleDiscardAndLeave}>Don't Save</button>
+                  <button className="btn-primary" onClick={handleSaveDraftAndLeave} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save as Draft'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="cr-overlay">
+          <div className="cr-draft-modal">
+            <h3 className="cr-draft-modal-title">Delete Recipe?</h3>
+            <p className="cr-draft-modal-body">This cannot be undone. The recipe will be permanently deleted.</p>
+            <div className="cr-draft-modal-actions">
+              <button className="btn-secondary" onClick={() => setConfirmDelete(false)}>Cancel</button>
+              <button className="btn-danger" onClick={handleDeleteRecipe}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
