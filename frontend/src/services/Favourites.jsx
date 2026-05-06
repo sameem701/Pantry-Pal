@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { listFavourites, toggleFavourite } from '../api/RecipeApi';
+import { Heart, Utensils, Clock } from 'lucide-react';
+import StarRating from '../components/StarRating';
 import './Recipes.css';
 
 export default function Favourites() {
@@ -77,21 +79,23 @@ function MiniCard({ recipe, onClick, onFavourite }) {
     <div className="recipe-card" onClick={onClick}>
       {recipe.image_url
         ? <div className="card-img-wrap"><img src={recipe.image_url} alt={recipe.title} className="card-img" loading="lazy" /></div>
-        : <div className="card-img-placeholder">🍽️</div>
+        : <div className="card-img-placeholder"><Utensils size={32} /></div>
       }
       <div className="card-body">
         <div className="card-top">
           <h3 className="card-title">{recipe.title}</h3>
-          <button className="fav-btn faved" onClick={onFavourite} title="Remove from favourites">♥</button>
+          <button className="fav-btn faved" onClick={onFavourite} title="Remove from favourites">
+            <Heart size={16} fill="currentColor" />
+          </button>
         </div>
         <div className="card-meta">
           {recipe.cuisine_name && <span className="badge badge-cuisine">{recipe.cuisine_name}</span>}
           {recipe.difficulty && <span className={`badge badge-diff badge-${recipe.difficulty.toLowerCase()}`}>{recipe.difficulty}</span>}
-          {recipe.prep_time_minutes && <span className="badge badge-time">⏱ {recipe.prep_time_minutes}m</span>}
+          {recipe.prep_time_minutes && <span className="badge badge-time"><Clock size={11} /> {recipe.prep_time_minutes}m</span>}
         </div>
         {recipe.average_rating > 0 && (
           <div className="card-rating">
-            {'★'.repeat(Math.round(recipe.average_rating))}{'☆'.repeat(5 - Math.round(recipe.average_rating))}
+            <StarRating rating={Number(recipe.average_rating)} size={13} />
             <span className="rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
           </div>
         )}

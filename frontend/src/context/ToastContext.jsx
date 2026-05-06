@@ -1,8 +1,14 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
-const TYPE_ICON = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+const TYPE_ICON = {
+  success: <CheckCircle size={16} />,
+  error:   <XCircle     size={16} />,
+  warning: <AlertTriangle size={16} />,
+  info:    <Info        size={16} />,
+};
 const TYPE_ACCENT = {
   success: '#4caf8c',
   error:   '#ff5a5a',
@@ -22,7 +28,7 @@ function Toast({ id, message, type, action, onRemove }) {
     <div className="toast" style={{ '--toast-accent': accent }}>
       <div className="toast-accent-bar" />
       <div className="toast-body">
-        <span className="toast-icon">{TYPE_ICON[type] || '✓'}</span>
+        <span className="toast-icon">{TYPE_ICON[type] || <CheckCircle size={16} />}</span>
         <span className="toast-message">{message}</span>
       </div>
       {action && (
@@ -31,7 +37,7 @@ function Toast({ id, message, type, action, onRemove }) {
           onClick={() => { action.onClick(); onRemove(id); }}
         >{action.label}</button>
       )}
-      <button className="toast-close" onClick={() => onRemove(id)}>×</button>
+      <button className="toast-close" onClick={() => onRemove(id)}><X size={14} /></button>
       <div className="toast-progress" />
     </div>
   );

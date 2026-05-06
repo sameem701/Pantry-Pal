@@ -57,6 +57,19 @@
 .rc-chip-icon { font-size: 1rem; }
 .rc-chip-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 
+/* My Recipes header row */
+.my-recipes-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.my-recipes-title-row .btn-primary {
+  width: fit-content;
+  flex-shrink: 0;
+}
+
 /* Header */
 .recipes-header {
   margin-bottom: 24px;
@@ -141,6 +154,9 @@
 
 /* Filter button */
 .btn-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 9px 16px;
   background: #fff;
   border: 1.5px solid #d0d0d0;
@@ -333,8 +349,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
-  background: #f5f5f5;
+  background: linear-gradient(135deg, #f0ece6, #e8e4df);
+  color: #bbb;
 }
 
 .card-body {
@@ -364,7 +380,8 @@
 .fav-btn {
   background: none;
   border: none;
-  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
   cursor: pointer;
   color: #ccc;
   padding: 0;
@@ -441,6 +458,9 @@
 
 /* Pantry mode ingredient status */
 .pantry-all-present {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.78rem;
   color: #2e7d32;
   font-weight: 700;
@@ -448,6 +468,9 @@
 }
 
 .pantry-missing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.78rem;
   color: #c62828;
   font-weight: 600;
@@ -601,11 +624,9 @@
 
 /* Rating */
 .card-rating {
-  font-size: 0.82rem;
-  color: #f57c00;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .rating-num {
@@ -631,7 +652,9 @@
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted, #888);
   pointer-events: none;
 }
 .recipes-search {
@@ -656,9 +679,10 @@
   transform: translateY(-50%);
   background: none;
   border: none;
+  display: flex;
+  align-items: center;
   color: var(--text-muted, #888);
   cursor: pointer;
-  font-size: 0.8rem;
   padding: 2px 4px;
 }
 .btn-clear-filters {

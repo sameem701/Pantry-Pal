@@ -1,12 +1,65 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { forgotPassword, resetPassword } from '../api/UserApi';
+import { Utensils } from 'lucide-react';
 import './Auth.css';
+
+function CodeInput({ onChange }) {
+  const inputRefs = useRef([]);
+  const [digits, setDigits] = useState(['', '', '', '', '', '']);
+
+  function handleChange(index, e) {
+    const val = e.target.value.replace(/\D/g, '').slice(-1);
+    const next = [...digits];
+    next[index] = val;
+    setDigits(next);
+    onChange(next.join(''));
+    if (val && index < 5) inputRefs.current[index + 1]?.focus();
+  }
+
+  function handleKeyDown(index, e) {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  }
+
+  function handlePaste(e) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = ['', '', '', '', '', ''];
+    pasted.split('').forEach((c, i) => { next[i] = c; });
+    setDigits(next);
+    onChange(next.join(''));
+    const focusIdx = Math.min(pasted.length, 5);
+    inputRefs.current[focusIdx]?.focus();
+  }
+
+  return (
+    <div className="code-input-row">
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={el => inputRefs.current[i] = el}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={d}
+          className="code-box"
+          onChange={e => handleChange(i, e)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          autoFocus={i === 0}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
   const [step, setStep] = useState('request'); // 'request' | 'reset'
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -18,10 +71,10 @@ export default function ForgotPassword() {
     setLoading(true);
     setError('');
     try {
-      await forgotPassword(email);
+      await forgotPassword(username);
       setStep('reset');
     } catch (err) {
-      setError(err.message || 'Could not send reset email.');
+      setError(err.message || 'Could not send reset code.');
     } finally {
       setLoading(false);
     }
@@ -29,11 +82,12 @@ export default function ForgotPassword() {
 
   async function handleReset(e) {
     e.preventDefault();
+    if (code.length !== 6) { setError('Please enter the full 6-digit code.'); return; }
     if (newPassword !== confirm) { setError('Passwords do not match.'); return; }
     setLoading(true);
     setError('');
     try {
-      await resetPassword(email, code, newPassword, confirm);
+      await resetPassword(username, code, newPassword, confirm);
       navigate('/login');
     } catch (err) {
       setError(err.message || 'Reset failed. Check your code.');
@@ -45,20 +99,21 @@ export default function ForgotPassword() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🥗 PantryPal</div>
+        <div className="auth-logo"><Utensils size={22} style={{ verticalAlign: 'middle', marginRight: 6 }} />PantryPal</div>
         <h1 className="auth-title">Reset password</h1>
 
         {error && <p className="auth-error">{error}</p>}
 
         {step === 'request' ? (
           <form onSubmit={handleRequest} className="auth-form">
-            <p className="auth-sub">Enter your email and we'll send a reset code.</p>
-            <label>Email</label>
+            <p className="auth-sub">Enter your username and we'll send a reset code.</p>
+            <label>Username</label>
             <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="Your username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              maxLength={20}
               required
               autoFocus
             />
@@ -68,17 +123,9 @@ export default function ForgotPassword() {
           </form>
         ) : (
           <form onSubmit={handleReset} className="auth-form">
-            <p className="auth-sub">Check <strong>{email}</strong> for the code.</p>
+            <p className="auth-sub">Check your account for the code sent to <strong>{username}</strong>.</p>
             <label>Reset Code</label>
-            <input
-              type="text"
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-              maxLength={6}
-              autoFocus
-            />
+            <CodeInput onChange={setCode} />
             <label>New Password</label>
             <input
               type="password"
@@ -107,3 +154,5 @@ export default function ForgotPassword() {
     </div>
   );
 }
+
+

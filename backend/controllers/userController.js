@@ -24,7 +24,7 @@ const toIntegerArray = (value) => {
     return Number.isFinite(numericValue) ? [numericValue] : [];
 };
 
-const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const validateUsername = (u) => /^[^\s-]{1,20}$/.test(u);
 
 const registerUserTemp = async (email, passwordHash, verificationCode) => {
     const query = `
@@ -144,14 +144,14 @@ const register = async (req, res) => {
         if (!email || !password || !password_confirm) {
             return res.status(400).json({
                 success: false,
-                message: 'Email and password are required'
+                message: 'Username and password are required'
             });
         }
 
-        if (!validateEmail(email)) {
+        if (!validateUsername(email)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid email format'
+                message: 'Username must be 1–20 characters with no spaces or hyphens'
             });
         }
 
@@ -217,7 +217,7 @@ const login = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Email and password are required'
+                message: 'Username and password are required'
             });
         }
 
@@ -301,7 +301,7 @@ const forgotPassword = async (req, res) => {
         const { email } = req.body;
 
         if (!email) {
-            return res.status(400).json({ success: false, message: 'Email is required' });
+            return res.status(400).json({ success: false, message: 'Username is required' });
         }
 
         const resetCode = Math.floor(100000 + Math.random() * 900000).toString();

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { Check, X } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import DietaryDropdown from '../components/DietaryDropdown';
 import CuisineDropdown from '../components/CuisineDropdown';
@@ -1124,13 +1125,13 @@ export default function MealPlanner() {
                                 ? e => handleSlotDragStart(e, iso, type)
                                 : undefined}
                             >
-                              {slot.isCooked && <span className="slot-cooked-badge">&#10003; Cooked</span>}
-                              {isPast && !slot.isCooked && <span className="slot-missed-badge">&#10005; Missed</span>}
+                              {slot.isCooked && <span className="slot-cooked-badge"><Check size={11} /> Cooked</span>}
+                              {isPast && !slot.isCooked && <span className="slot-missed-badge"><X size={11} /> Missed</span>}
                               <span className="slot-title">{slot.title}</span>
                               {!isPast && !slot.isCooked && !clearMode && iso === todayIso && (
                                 <div className="slot-actions">
                                   <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(iso, type, e)}>Cook</button>
-                                  <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(iso, type, e)}>&#215;</button>
+                                  <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(iso, type, e)}><X size={12} /></button>
                                 </div>
                               )}
                             </div>
@@ -1478,7 +1479,7 @@ export default function MealPlanner() {
           <div className="shop-modal" onClick={e => e.stopPropagation()} style={{ width: 'fit-content', minWidth: 420, maxWidth: '94vw' }}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">Save as Template</h2>
-              <button className="mp-modal-close" onClick={() => setSaveTmplModal(false)} disabled={savingTemplate}>&#215;</button>
+              <button className="mp-modal-close" onClick={() => setSaveTmplModal(false)} disabled={savingTemplate}><X size={16} /></button>
             </div>
             <p className="shop-modal-sub">Choose which days to include. Click to toggle · Drag chip-to-chip to range-select · Drag chip to reorder.</p>
             <input
@@ -1571,7 +1572,7 @@ export default function MealPlanner() {
           <div className="shop-modal tmpl-load-modal" onClick={e => e.stopPropagation()}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">Load: {loadTmplModal.name}</h2>
-              <button className="mp-modal-close" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}>&#215;</button>
+              <button className="mp-modal-close" onClick={() => setLoadTmplModal(null)} disabled={loadTmplWorking}><X size={16} /></button>
             </div>
 
             <div className="tmpl-load-date-row">
@@ -1682,7 +1683,7 @@ export default function MealPlanner() {
           <div className="shop-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">{viewTmplModal.name}</h2>
-              <button className="mp-modal-close" onClick={() => setViewTmplModal(null)}>&#215;</button>
+              <button className="mp-modal-close" onClick={() => setViewTmplModal(null)}><X size={16} /></button>
             </div>
             {viewTmplModal.meals.length === 0 ? (
               <p className="shop-modal-sub" style={{ padding: '16px 0' }}>This template has no meals.</p>
@@ -1722,7 +1723,7 @@ export default function MealPlanner() {
           <div className="shop-modal" onClick={e => e.stopPropagation()}>
             <div className="shop-modal-head">
               <h2 className="shop-modal-title">Generate Shopping List</h2>
-              <button className="mp-modal-close" onClick={() => setShopModal(false)}>&#215;</button>
+              <button className="mp-modal-close" onClick={() => setShopModal(false)}><X size={16} /></button>
             </div>
             <p className="shop-modal-sub">
               Select the ingredients you need to buy, then generate your shopping list.

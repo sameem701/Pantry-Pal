@@ -3,6 +3,7 @@ import { Component, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { navGuardRef } from './utils/navGuard';
+import { Leaf, ChefHat, Heart, BookOpen, CalendarDays, ShoppingCart, User, Utensils } from 'lucide-react';
 import './App.css';
 
 // ── pages ─────────────────────────────────────────────────────────────────────
@@ -42,13 +43,13 @@ class ErrorBoundary extends Component {
 
 // ── sidebar ───────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { to: '/pantry',        icon: '🥦', label: 'Pantry'           },
-  { to: '/recipes',       icon: '🍳', label: 'Recipes'          },
-  { to: '/favourites',    icon: '♥',  label: 'Favourites'       },
-  { to: '/my-recipes',    icon: '📝', label: 'My Recipes'       },
-  { to: '/meal-plan',     icon: '📅', label: 'Plan & Nutrition' },
-  { to: '/shopping-list', icon: '🛒', label: 'Shopping List'    },
-  { to: '/profile',       icon: '👤', label: 'Profile'          },
+  { to: '/pantry',        Icon: Leaf,          label: 'Pantry'           },
+  { to: '/recipes',       Icon: ChefHat,       label: 'Recipes'          },
+  { to: '/favourites',    Icon: Heart,         label: 'Favourites'       },
+  { to: '/my-recipes',    Icon: BookOpen,      label: 'My Recipes'       },
+  { to: '/meal-plan',     Icon: CalendarDays,  label: 'Plan & Nutrition' },
+  { to: '/shopping-list', Icon: ShoppingCart,  label: 'Shopping List'    },
+  { to: '/profile',       Icon: User,          label: 'Profile'          },
 ];
 
 function Sidebar() {
@@ -64,12 +65,12 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <span className="sidebar-logo-icon">🥗</span>
+        <span className="sidebar-logo-icon"><Utensils size={20} /></span>
         <span className="sidebar-logo-text">PantryPal</span>
       </div>
 
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map(({ to, icon, label }) => (
+        {NAV_ITEMS.map(({ to, Icon, label }) => (
           <NavLink
             key={to}
             to={to}
@@ -81,7 +82,7 @@ function Sidebar() {
               }
             }}
           >
-            <span className="sidebar-icon">{icon}</span>
+            <span className="sidebar-icon"><Icon size={18} /></span>
             <span className="sidebar-label">{label}</span>
             <span className="sidebar-indicator" />
           </NavLink>

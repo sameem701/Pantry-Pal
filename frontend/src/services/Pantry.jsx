@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Loader, Pencil, Trash2, Thermometer, Archive, Snowflake, LayoutGrid } from 'lucide-react';
 import {
   getPantry, addPantryItem, updatePantryItem,
   deletePantryItem, searchIngredients,
@@ -7,7 +8,12 @@ import {
 import './Pantry.css';
 
 const STORAGE_LOCATIONS = ['Fridge', 'Pantry', 'Freezer'];
-const LOCATION_ICONS = { Fridge: '❄️', Pantry: '🗄️', Freezer: '🧊' };
+const LOCATION_ICON_MAP = {
+  Fridge:  <Thermometer size={14} />,
+  Pantry:  <Archive size={14} />,
+  Freezer: <Snowflake size={14} />,
+};
+const ALL_ICON = <LayoutGrid size={14} />;
 
 const UNITS = ['g', 'kg', 'ml', 'L', 'cup', 'tbsp', 'tsp', 'oz', 'lb', 'piece', 'bunch', 'can', 'pkg'];
 
@@ -191,7 +197,7 @@ export default function Pantry() {
                 onFocus={() => searchResults.length && setShowDropdown(true)}
                 autoComplete="off"
               />
-              {searching && <span className="search-spinner">⟳</span>}
+              {searching && <span className="search-spinner"><Loader size={14} className="spin" /></span>}
             </div>
             {showDropdown && searchResults.length > 0 && (
               <ul className="search-dropdown">
@@ -247,7 +253,7 @@ export default function Pantry() {
                   className={`loc-btn${addLocation === loc ? ' active' : ''}`}
                   onClick={() => setAddLocation(loc)}
                 >
-                  {LOCATION_ICONS[loc]} {loc}
+                  {LOCATION_ICON_MAP[loc]} {loc}
                 </button>
               ))}
             </div>
@@ -273,7 +279,7 @@ export default function Pantry() {
                 className={`filter-tab${filterLocation === loc ? ' active' : ''}`}
                 onClick={() => setFilterLocation(loc)}
               >
-                {LOCATION_ICONS[loc] || '📋'} {loc}
+                {LOCATION_ICON_MAP[loc] || ALL_ICON} {loc}
               </button>
             ))}
           </div>
@@ -293,7 +299,7 @@ export default function Pantry() {
             items.length === 0 ? null : (
               <div key={loc} className="pantry-group">
                 <h3 className="pantry-group-label">
-                  {LOCATION_ICONS[loc] || '📋'} {loc}
+                  {LOCATION_ICON_MAP[loc] || ALL_ICON} {loc}
                   <span className="group-count">{items.length}</span>
                 </h3>
                 <div className="pantry-grid">
@@ -304,8 +310,8 @@ export default function Pantry() {
                         <span className="pantry-item-qty">{item.quantity} {item.unit}</span>
                       </div>
                       <div className="pantry-item-actions">
-                        <button className="item-btn edit" onClick={() => openEdit(item)} title="Edit">✏️</button>
-                        <button className="item-btn del" onClick={() => handleDelete(item.ingredient_id)} title="Remove">🗑️</button>
+                        <button className="item-btn edit" onClick={() => openEdit(item)} title="Edit"><Pencil size={14} /></button>
+                        <button className="item-btn del" onClick={() => handleDelete(item.ingredient_id)} title="Remove"><Trash2 size={14} /></button>
                       </div>
                     </div>
                   ))}
@@ -351,7 +357,7 @@ export default function Pantry() {
                   className={`loc-btn${editLocation === loc ? ' active' : ''}`}
                   onClick={() => setEditLocation(loc)}
                 >
-                  {LOCATION_ICONS[loc]} {loc}
+                  {LOCATION_ICON_MAP[loc]} {loc}
                 </button>
               ))}
             </div>

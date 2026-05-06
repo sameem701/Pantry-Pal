@@ -16,27 +16,27 @@
 
   /* Canvas / surface */
   --canvas-bg:            #e8e4df;
-  --content-bg:           #f8f5f2;
-  --card-bg:              #ffffff;
+  --content-bg:           #f0ece6;
+  --card-bg:              #f5f2ed;
 
-  /* Accent palette */
-  --accent-orange:        #e8622a;
-  --accent-green:         #4caf8c;
-  --accent-green-dark:    #2d7a5a;
+  /* Accent palette — Deep Autumn */
+  --accent-orange:        #388e6d;
+  --accent-green:         #388e6d;
+  --accent-green-dark:    #2d6f5a;
   --accent-purple:        #5a4fcf;
-  --accent-red:           #ff5a5a;
-  --accent-warning:       #e8a050;
+  --accent-red:           #a04a3a;
+  --accent-warning:       #b8860b;
 
   /* Meal-type colours */
-  --breakfast-bg:         #ffd6a5;
-  --breakfast-border:     #f5b87a;
-  --breakfast-text:       #7a4a00;
-  --lunch-bg:             #b5ead7;
-  --lunch-border:         #7acbab;
-  --lunch-text:           #0d4a30;
-  --dinner-bg:            #c7ceea;
-  --dinner-border:        #9099cc;
-  --dinner-text:          #1a1a6e;
+  --breakfast-bg:         #fef5e7;
+  --breakfast-border:     #d4a574;
+  --breakfast-text:       #5c4033;
+  --lunch-bg:             #e8f2ed;
+  --lunch-border:         #8b9f90;
+  --lunch-text:           #3d5a4a;
+  --dinner-bg:            #e8e5f0;
+  --dinner-border:        #a895c5;
+  --dinner-text:          #4a3d6d;
 
   /* Typography */
   --text-heading:         #1a1a2e;
@@ -46,9 +46,9 @@
   --text-placeholder:     #aaaaaa;
 
   /* Borders */
-  --border-default:       #dddddd;
-  --border-subtle:        #eeeeee;
-  --border-grid:          #e0dbd5;
+  --border-default:       #d4cfc7;
+  --border-subtle:        #e9e5e0;
+  --border-grid:          #ddd8d2;
 
   /* Fonts */
   --font-serif:           Georgia, 'Times New Roman', serif;
@@ -56,10 +56,11 @@
 
   /* Misc */
   --radius-sm:            6px;
-  --radius-md:            10px;
+  --radius-md:            12px;
   --radius-lg:            14px;
-  --shadow-card:          0 2px 12px rgba(0,0,0,0.07);
-  --shadow-modal:         0 8px 40px rgba(0,0,0,0.22);
+  --shadow-card:          0 2px 8px rgba(0,0,0,0.08);
+  --shadow-elevated:      0 4px 16px rgba(0,0,0,0.12);
+  --shadow-modal:         0 20px 60px rgba(0,0,0,0.18);
   --transition:           0.15s ease;
 }
 
@@ -125,7 +126,7 @@ input, select, textarea {
   align-items: center;
   gap: 10px;
 }
-.sidebar-logo-icon { font-size: 1.4rem; }
+.sidebar-logo-icon { display: flex; align-items: center; color: var(--accent-orange); }
 .sidebar-logo-text {
   color: #fff;
   font-size: 1.05rem;
@@ -160,7 +161,7 @@ input, select, textarea {
   background: var(--sidebar-active);
   color: #ffffff;
 }
-.sidebar-icon  { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+.sidebar-icon  { display: flex; align-items: center; justify-content: center; width: 20px; flex-shrink: 0; }
 .sidebar-label { flex: 1; }
 .sidebar-indicator { display: none; }
 .sidebar-item.active .sidebar-indicator {
@@ -215,7 +216,7 @@ input, select, textarea {
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 .sidebar-logout:hover {
-  background: rgba(232,98,42,0.15);
+  background: rgba(56,142,109,0.15);
   color: var(--accent-orange);
   border-color: var(--accent-orange);
 }
@@ -340,7 +341,7 @@ input, select, textarea {
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -404,7 +405,7 @@ input, select, textarea {
   font-family: var(--font-serif);
   transition: background var(--transition);
 }
-.confirm-confirm:hover { background: #e04040; }
+.confirm-confirm:hover { background: #8c3a2c; }
 
 /* ── Shared utility classes ────────────────────────────────────────────────── */
 .page-wrap {
@@ -432,7 +433,7 @@ input, select, textarea {
   cursor: pointer;
   transition: background var(--transition);
 }
-.btn-primary:hover:not(:disabled) { background: #d4521f; }
+.btn-primary:hover:not(:disabled) { background: #2d7056; }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .btn-secondary {

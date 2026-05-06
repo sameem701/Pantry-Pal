@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getProfile, updateProfile, getDietaryOptions, getCuisineOptions } from '../api/UserApi';
+import { Sprout, Flame, ChefHat, Check } from 'lucide-react';
 import './Profile.css';
 
 const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
@@ -107,10 +108,10 @@ export default function Profile() {
                   className={`skill-btn${skillLevel === level ? ' active' : ''}`}
                   onClick={() => setSkillLevel(level)}
                 >
-                  {level === 'Beginner' && '🌱 '}
-                  {level === 'Intermediate' && '🍳 '}
-                  {level === 'Advanced' && '👨‍🍳 '}
-                  {level}
+                  {level === 'Beginner' && <Sprout size={14} />}
+                  {level === 'Intermediate' && <Flame size={14} />}
+                  {level === 'Advanced' && <ChefHat size={14} />}
+                  {' '}{level}
                 </button>
               ))}
             </div>
@@ -133,7 +134,7 @@ export default function Profile() {
                     className={`pref-tag${checked ? ' selected' : ''}`}
                     onClick={() => toggleItem(selectedDietary, setSelectedDietary, id)}
                   >
-                    {checked ? '✓ ' : ''}{label}
+                    {checked && <Check size={12} />}{label}
                   </button>
                 );
               })}
@@ -157,7 +158,7 @@ export default function Profile() {
                     className={`pref-tag cuisine${checked ? ' selected' : ''}`}
                     onClick={() => toggleItem(selectedCuisines, setSelectedCuisines, id)}
                   >
-                    {checked ? '✓ ' : ''}{label}
+                    {checked && <Check size={12} />}{label}
                   </button>
                 );
               })}

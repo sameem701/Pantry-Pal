@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { login as loginApi } from '../api/UserApi';
 import { useAuth } from '../context/AuthContext';
+import { Utensils } from 'lucide-react';
 import './Auth.css';
 
 export default function Login() {
@@ -9,23 +10,31 @@ export default function Login() {
   const location = useLocation();
   const { login } = useAuth();
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const verified = location.state?.verified;
 
+  function validateUsername(v) {
+    return v.length >= 1 && v.length <= 20 && !/[\s-]/.test(v);
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!validateUsername(username)) {
+      setError('Username must be 1–20 characters with no spaces or hyphens.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const data = await loginApi(email, password);
+      const data = await loginApi(username, password);
       login(data);
       navigate('/pantry');
     } catch (err) {
-      setError(err.message || 'Invalid email or password.');
+      setError(err.message || 'Invalid username or password.');
     } finally {
       setLoading(false);
     }
@@ -34,20 +43,21 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🥗 PantryPal</div>
+        <div className="auth-logo"><Utensils size={22} style={{ verticalAlign: 'middle', marginRight: 6 }} />PantryPal</div>
         <h1 className="auth-title">Welcome back</h1>
         <p className="auth-sub">Sign in to manage your pantry &amp; recipes</p>
 
-        {verified && <p className="auth-success">Email verified! You can now sign in.</p>}
+        {verified && <p className="auth-success">Account verified! You can now sign in.</p>}
         {error && <p className="auth-error">{error}</p>}
 
         <form onSubmit={handleSubmit} className="auth-form">
-          <label>Email</label>
+          <label>Username</label>
           <input
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            placeholder="Your username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            maxLength={20}
             required
             autoFocus
           />

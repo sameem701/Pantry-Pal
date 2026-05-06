@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { getAllRecipes, deleteRecipe } from '../api/RecipeApi';
 import ConfirmModal from '../components/ConfirmModal';
+import { Pencil, Trash2, Utensils, Clock, Heart, Plus, ChevronUp, ChevronDown } from 'lucide-react';
+import StarRating from '../components/StarRating';
 import './Recipes.css';
 
 export default function MyRecipes() {
@@ -46,10 +48,14 @@ export default function MyRecipes() {
   return (
     <div className="recipes-page">
       <div className="recipes-header">
-        <h1 className="recipes-title">My Recipes</h1>
-        {!loading && recipes.length > 0 && (
-          <button className="btn-primary" onClick={() => navigate('/create-recipe')}>+ Create Recipe</button>
-        )}
+        <div className="my-recipes-title-row">
+          <h1 className="recipes-title">My Recipes</h1>
+          {!loading && recipes.length > 0 && (
+            <button className="btn-primary" onClick={() => navigate('/create-recipe')}>
+              <Plus size={14} /> Create Recipe
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <p className="recipes-error">{error}</p>}
@@ -83,7 +89,7 @@ export default function MyRecipes() {
             >
               {recipe.image_url
                 ? <div className="card-img-wrap"><img src={recipe.image_url} alt={recipe.title} className="card-img" loading="lazy" /></div>
-                : <div className="card-img-placeholder">{String.fromCodePoint(0x1F37D)}</div>
+                : <div className="card-img-placeholder"><Utensils size={36} /></div>
               }
               {isDraft && <span className="recipe-draft-badge">Draft</span>}
               <div className="card-body">
@@ -94,29 +100,29 @@ export default function MyRecipes() {
                       className="icon-btn"
                       title="Edit"
                       onClick={() => navigate(`/recipes/${recipe.recipe_id}/edit`)}
-                    >{String.fromCodePoint(0x270F)}</button>
+                    ><Pencil size={14} /></button>
                     <button
                       className="icon-btn icon-btn-danger"
                       title="Delete"
                       onClick={() => setConfirmDelete({ recipeId: recipe.recipe_id, title: recipe.title })}
-                    >{String.fromCodePoint(0x1F5D1)}</button>
+                    ><Trash2 size={14} /></button>
                   </div>
                 </div>
                 <div className="card-meta">
                   {recipe.cuisine_name && <span className="badge badge-cuisine">{recipe.cuisine_name}</span>}
                   {recipe.difficulty && <span className={`badge badge-diff badge-${recipe.difficulty.toLowerCase()}`}>{recipe.difficulty}</span>}
                   {(recipe.cooking_time || recipe.prep_time_minutes) && (
-                    <span className="badge badge-time">{String.fromCodePoint(0x23F1)} {recipe.cooking_time || recipe.prep_time_minutes}m</span>
+                    <span className="badge badge-time"><Clock size={11} /> {recipe.cooking_time || recipe.prep_time_minutes}m</span>
                   )}
                 </div>
                 {!isDraft && recipe.average_rating > 0 && (
                   <div className="card-rating">
-                    {'★'.repeat(Math.round(recipe.average_rating))}{'☆'.repeat(5 - Math.round(recipe.average_rating))}
+                    <StarRating rating={Number(recipe.average_rating)} size={13} />
                     <span className="rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
                   </div>
                 )}
                 {!isDraft && recipe.save_count != null && (
-                  <p className="saved-count">{String.fromCodePoint(0x2665)} {recipe.save_count} save{recipe.save_count !== 1 ? 's' : ''}</p>
+                  <p className="saved-count"><Heart size={11} fill="currentColor" /> {recipe.save_count} save{recipe.save_count !== 1 ? 's' : ''}</p>
                 )}
               </div>
             </div>
@@ -139,7 +145,7 @@ export default function MyRecipes() {
                 >
                   <span>Drafts</span>
                   <span className="my-recipes-drafts-count">{drafts.length}</span>
-                  <span className="my-recipes-drafts-chevron">{showDrafts ? '▲' : '▼'}</span>
+                  <span className="my-recipes-drafts-chevron">{showDrafts ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</span>
                 </button>
                 {showDrafts && (
                   <div className="recipe-grid recipe-grid--drafts">

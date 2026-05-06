@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getProfile } from '../api/UserApi';
+import { Search, SlidersHorizontal, X, Utensils, Heart, Check, Clock } from 'lucide-react';
+import StarRating from '../components/StarRating';
 import {
   browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
 } from '../api/RecipeApi';
@@ -276,7 +278,7 @@ export default function Recipes() {
 
           {/* Search */}
           <div className="recipes-search-wrap">
-            <span className="search-icon">{String.fromCodePoint(0x1F50D)}</span>
+            <span className="search-icon"><Search size={15} /></span>
             <input
               className="recipes-search"
               type="text"
@@ -285,7 +287,7 @@ export default function Recipes() {
               onChange={e => setQuery(e.target.value)}
             />
             {query && (
-              <button className="search-clear" onClick={() => setQuery('')}>&times;</button>
+              <button className="search-clear" onClick={() => setQuery('')}><X size={14} /></button>
             )}
           </div>
 
@@ -299,7 +301,7 @@ export default function Recipes() {
             className={'btn-filters' + (hasActiveFilters ? ' has-active' : '')}
             onClick={openFilterModal}
           >
-            {String.fromCodePoint(0x2699)} Filters{hasActiveFilters ? ' \u2022' : ''}
+            <SlidersHorizontal size={14} /> Filters{hasActiveFilters ? ' •' : ''}
           </button>
         </div>
       </div>
@@ -412,7 +414,7 @@ export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false })
           <img src={recipe.image_url} alt={recipe.title} className="card-img" loading="lazy" />
         </div>
       ) : (
-        <div className="card-img-placeholder">{String.fromCodePoint(0x1F37D)}</div>
+        <div className="card-img-placeholder"><Utensils size={32} /></div>
       )}
 
       <div className="card-body">
@@ -423,7 +425,7 @@ export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false })
             onClick={onFavourite}
             title={recipe.is_favourite ? 'Remove favourite' : 'Add to favourites'}
           >
-            {recipe.is_favourite ? '\u2665' : '\u2661'}
+            <Heart size={16} fill={recipe.is_favourite ? 'currentColor' : 'none'} />
           </button>
         </div>
 
@@ -435,16 +437,16 @@ export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false })
             </span>
           )}
           {recipe.prep_time_minutes && (
-            <span className="badge badge-time">{String.fromCodePoint(0x23F1)} {recipe.prep_time_minutes}m</span>
+            <span className="badge badge-time"><Clock size={11} /> {recipe.prep_time_minutes}m</span>
           )}
         </div>
 
         {/* Pantry match indicator */}
         {pantryMode && missingCount !== null && (
           missingCount === 0 ? (
-            <p className="pantry-all-present">&#10003; All ingredients present</p>
+            <p className="pantry-all-present"><Check size={12} /> All ingredients present</p>
           ) : (
-            <p className="pantry-missing">&#10007; {missingCount} ingredient{missingCount > 1 ? 's' : ''} missing</p>
+            <p className="pantry-missing"><X size={12} /> {missingCount} ingredient{missingCount > 1 ? 's' : ''} missing</p>
           )
         )}
 
@@ -460,7 +462,7 @@ export function RecipeCard({ recipe, onClick, onFavourite, pantryMode = false })
 
         {recipe.average_rating > 0 && (
           <div className="card-rating">
-            {'\u2605'.repeat(Math.round(recipe.average_rating))}{'\u2606'.repeat(5 - Math.round(recipe.average_rating))}
+            <StarRating rating={Number(recipe.average_rating)} size={13} />
             <span className="rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
           </div>
         )}

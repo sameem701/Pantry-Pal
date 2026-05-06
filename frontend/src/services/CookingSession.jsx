@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { ArrowLeft, ArrowRight, Check, AlertTriangle } from 'lucide-react';
 import {
   startCookingSession,
   getCookingSession,
@@ -263,9 +264,9 @@ export default function CookingSession() {
   if (error) return (
     <div className="cook-shell">
       <div className="cook-error">
-        <span>⚠️</span>
+        <span><AlertTriangle size={24} /></span>
         <p>{error}</p>
-        <button onClick={() => navigate(-1)}>← Go back</button>
+        <button onClick={() => navigate(-1)}><ArrowLeft size={14} /> Go back</button>
       </div>
     </div>
   );
@@ -277,7 +278,7 @@ export default function CookingSession() {
       {/* Header */}
       <div className="cook-header">
         <button className="cook-back" onClick={() => navigate(`/recipes/${recipeId}`)}>
-          ← Back to Recipe
+          <ArrowLeft size={14} /> Back to Recipe
         </button>
         <span className="cook-recipe-title">{session?.recipe_title}</span>
         <span className="cook-step-counter">{current} / {total}</span>
@@ -318,7 +319,7 @@ export default function CookingSession() {
           disabled={current <= 1 || stepping}
           onClick={() => goToStep(current - 1)}
         >
-          ← Previous
+          <ArrowLeft size={16} /> Previous
         </button>
 
         {isLast ? (
@@ -327,7 +328,7 @@ export default function CookingSession() {
             disabled={completing || stepping}
             onClick={handleComplete}
           >
-            {completing ? 'Completing…' : '✓ Complete Cooking'}
+            {completing ? 'Completing…' : <><Check size={16} /> Complete Cooking</>}
           </button>
         ) : (
           <button
@@ -335,7 +336,7 @@ export default function CookingSession() {
             disabled={stepping}
             onClick={() => goToStep(current + 1)}
           >
-            Next →
+            Next <ArrowRight size={16} />
           </button>
         )}
       </div>

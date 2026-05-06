@@ -5,6 +5,8 @@ import { useToast } from '../context/ToastContext';
 import { getRecipeDetails, toggleFavourite, getReviews, upsertReview, deleteReview } from '../api/RecipeApi';
 import { saveShoppingListLocally } from '../utils/shoppingListStore';
 import ConfirmModal from '../components/ConfirmModal';
+import { Heart, Clock, Flame, Check, X, ChefHat, Utensils, ArrowLeft, Star } from 'lucide-react';
+import StarRating from '../components/StarRating';
 import './RecipeDetail.css';
 
 export default function RecipeDetail() {
@@ -26,6 +28,7 @@ export default function RecipeDetail() {
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [myRating, setMyRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
   const [myReviewText, setMyReviewText] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
   const [confirmDeleteReview, setConfirmDeleteReview] = useState(false);
@@ -132,30 +135,16 @@ export default function RecipeDetail() {
 
   return (
     <div className="rd-page">
-      <button className="rd-back" onClick={() => navigate(-1)}>← Back</button>
+      <button className="rd-back" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</button>
 
       <div className="rd-hero">
         <div className="rd-hero-left">
           {recipe.image_url
             ? <img src={recipe.image_url} alt={recipe.title} className="rd-hero-img" />
-            : <div className="rd-hero-placeholder">🍽️</div>
+            : <div className="rd-hero-placeholder"><Utensils size={48} /></div>
           }
         </div>
         <div className="rd-hero-right">
-          <div className="rd-meta-badges">
-            {recipe.cuisine_name && <span className="badge badge-cuisine">{recipe.cuisine_name}</span>}
-            {recipe.difficulty && (
-              <span className={`badge badge-diff badge-${recipe.difficulty.toLowerCase()}`}>
-                {recipe.difficulty}
-              </span>
-            )}
-            {recipe.prep_time_minutes && (
-              <span className="badge badge-time">⏱ {recipe.prep_time_minutes}m prep</span>
-            )}
-            {recipe.cook_time_minutes && (
-              <span className="badge badge-time">🔥 {recipe.cook_time_minutes}m cook</span>
-            )}
-          </div>
           <h1 className="rd-title">{recipe.title}</h1>
           {recipe.description && <p className="rd-desc">{recipe.description}</p>}
           <div className="rd-actions">
@@ -164,14 +153,28 @@ export default function RecipeDetail() {
               onClick={handleFavourite}
               disabled={favLoading}
             >
-              {recipe.is_favourite ? '♥ Saved' : '♡ Save'}
+              {recipe.is_favourite ? <><Heart size={15} fill="currentColor" /> Saved</> : <><Heart size={15} /> Save</>}
             </button>
             <button
               className="cook-btn"
               onClick={() => navigate(`/cook/${id}`)}
             >
-              👨‍🍳 Start Cooking
+              <ChefHat size={15} /> Start Cooking
             </button>
+          </div>
+          <div className="rd-meta-badges">
+            {recipe.cuisine_name && <span className="badge badge-cuisine">{recipe.cuisine_name}</span>}
+            {recipe.difficulty && (
+              <span className={`badge badge-diff badge-${recipe.difficulty.toLowerCase()}`}>
+                {recipe.difficulty}
+              </span>
+            )}
+            {recipe.prep_time_minutes && (
+              <span className="badge badge-time"><Clock size={12} /> {recipe.prep_time_minutes}m prep</span>
+            )}
+            {recipe.cook_time_minutes && (
+              <span className="badge badge-time"><Flame size={12} /> {recipe.cook_time_minutes}m cook</span>
+            )}
           </div>
         </div>
       </div>
@@ -197,7 +200,7 @@ export default function RecipeDetail() {
                   const reqQty    = ing.required_qty ?? ing.quantity;
                   return (
                     <li key={i} className={`rd-ing${available ? ' available' : ' missing'}`}>
-                      <span className="ing-dot">{available ? '✓' : '✗'}</span>
+                      <span className="ing-dot">{available ? <Check size={13} /> : <X size={13} />}</span>
                       <span className="ing-text">
                         {reqQty != null && reqQty !== '' && <strong>{reqQty}{ing.unit ? ' ' + ing.unit : ''} </strong>}
                         {ing.name || ing.ingredient_name}
@@ -229,7 +232,7 @@ export default function RecipeDetail() {
                     <span className="step-num">{i + 1}</span>
                     <span className="step-text">{step.instruction_text || step.instruction || step.description || ''}</span>
                     {step.duration_minutes && (
-                      <span className="step-timer">⏱ {step.duration_minutes}m</span>
+                      <span className="step-timer"><Clock size={12} /> {step.duration_minutes}m</span>
                     )}
                   </li>
                 ))}
@@ -286,8 +289,8 @@ export default function RecipeDetail() {
         {/* Rating summary */}
         {typeof recipe.average_rating === 'number' && recipe.average_rating > 0 && (
           <div className="rd-section rd-rating-section">
-            <span className="rd-stars">{'★'.repeat(Math.round(recipe.average_rating))}{'☆'.repeat(5 - Math.round(recipe.average_rating))}</span>
-            <span className="rd-rating-num">{Number(recipe.average_rating).toFixed(1)} / 5</span>
+            <StarRating rating={Number(recipe.average_rating)} size={16} />
+            <span className="rd-rating-num">{Number(recipe.average_rating).toFixed(1)}</span>
             {recipe.review_count > 0 && <span className="rd-review-count">({recipe.review_count} reviews)</span>}
           </div>
         )}
@@ -310,22 +313,26 @@ export default function RecipeDetail() {
                 {myExistingReview ? 'Your Review (click stars to update)' : 'Write a Review'}
               </p>
               <div className="rd-star-row">
-                {[1, 2, 3, 4, 5].map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`rd-star-btn${myRating >= n ? ' filled' : ''}`}
-                    onClick={() => setMyRating(n)}
-                    aria-label={`${n} star`}
-                  >
-                    {myRating >= n ? '★' : '☆'}
-                  </button>
-                ))}
-                {myRating > 0 && <span className="rd-star-label">{myRating}/5</span>}
+                {[1, 2, 3, 4, 5].map(n => {
+                  const active = hoverRating ? hoverRating >= n : myRating >= n;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`rd-star-btn${active ? ' filled' : ''}`}
+                      onClick={() => setMyRating(n)}
+                      onMouseEnter={() => setHoverRating(n)}
+                      onMouseLeave={() => setHoverRating(0)}
+                      aria-label={`${n} star`}
+                    >
+                      <Star size={24} fill={active ? '#f57c00' : 'none'} color={active ? '#f57c00' : '#ccc'} />
+                    </button>
+                  );
+                })}
               </div>
               <textarea
                 className="form-input rd-review-textarea"
-                placeholder="Share your thoughts… (optional)"
+                placeholder="Write a review…"
                 value={myReviewText}
                 onChange={e => setMyReviewText(e.target.value)}
                 rows={3}
@@ -362,7 +369,9 @@ export default function RecipeDetail() {
                     <li key={i} className="rd-review-item">
                       <div className="rd-review-header">
                         <span className="rd-review-user">{rev.username || rev.display_name || `User ${rev.user_id}`}</span>
-                        <span className="rd-review-stars">{'★'.repeat(rev.rating ?? 0)}{'☆'.repeat(5 - (rev.rating ?? 0))}</span>
+                        <span className="rd-review-stars">
+                          <StarRating rating={rev.rating ?? 0} size={13} />
+                        </span>
                         {rev.created_at && (
                           <span className="rd-review-date">
                             {new Date(rev.created_at).toLocaleDateString()}
