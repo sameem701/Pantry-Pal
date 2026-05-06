@@ -135,11 +135,13 @@ export default function RecipeDetail() {
       <button className="rd-back" onClick={() => navigate(-1)}>← Back</button>
 
       <div className="rd-hero">
-        {recipe.image_url
-          ? <img src={recipe.image_url} alt={recipe.title} className="rd-hero-img" />
-          : <div className="rd-hero-placeholder">🍽️</div>
-        }
-        <div className="rd-hero-overlay">
+        <div className="rd-hero-left">
+          {recipe.image_url
+            ? <img src={recipe.image_url} alt={recipe.title} className="rd-hero-img" />
+            : <div className="rd-hero-placeholder">🍽️</div>
+          }
+        </div>
+        <div className="rd-hero-right">
           <div className="rd-meta-badges">
             {recipe.cuisine_name && <span className="badge badge-cuisine">{recipe.cuisine_name}</span>}
             {recipe.difficulty && (

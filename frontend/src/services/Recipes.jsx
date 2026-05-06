@@ -5,6 +5,7 @@ import { getProfile } from '../api/UserApi';
 import {
   browseRecipes, searchByPantry, listCuisineOptions, listDietaryOptions, toggleFavourite,
 } from '../api/RecipeApi';
+import { getPantry } from '../api/PantryApi';
 import { getRecentlyCooked } from '../utils/recentlyCookedStore';
 import DietaryDropdown from '../components/DietaryDropdown';
 import CuisineDropdown from '../components/CuisineDropdown';
@@ -19,6 +20,7 @@ export default function Recipes() {
 
   // mode: 'pantry' (default) | 'all'
   const [mode,         setMode]         = useState('pantry');
+  const [pantryEmpty,  setPantryEmpty]  = useState(false);
   const [filterOpen,   setFilterOpen]   = useState(false);
 
   const [query,        setQuery]        = useState('');
@@ -121,6 +123,14 @@ export default function Recipes() {
     try {
       let list = [];
       if (mode === 'pantry') {
+        // Check if pantry is empty first (only on initial load / reset)
+        if (reset) {
+          try {
+            const pantryData = await getPantry(userId);
+            const pantryItems = pantryData?.items ?? pantryData?.data ?? pantryData;
+            setPantryEmpty(Array.isArray(pantryItems) && pantryItems.length === 0);
+          } catch { setPantryEmpty(false); }
+        }
         const data = await searchByPantry({
           userId,
           difficulty: difficulty || undefined,
@@ -347,9 +357,19 @@ export default function Recipes() {
 
       {!loading && recipes.length === 0 && !error && (
         <div className="recipes-empty">
-          {mode === 'pantry'
-            ? 'Add items to your pantry to see matching recipes.'
-            : 'No recipes match the selected filters.'}
+          {mode === 'pantry' && pantryEmpty ? (
+            <>
+              Your pantry is empty.{' '}
+              <button className="link-btn" onClick={() => navigate('/pantry')}>
+                Add ingredients to your pantry
+              </button>{' '}
+              to see matching recipes.
+            </>
+          ) : mode === 'pantry' ? (
+            'No recipes match your pantry and filters. Try adjusting your filters.'
+          ) : (
+            'No recipes match the selected filters.'
+          )}
         </div>
       )}
 

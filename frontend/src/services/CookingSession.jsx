@@ -41,6 +41,13 @@ export default function CookingSession() {
   // Cache recipe nutrition from initial details fetch
   const recipeNutritionRef = useRef(null);
 
+  // Prevent concurrent step-change API calls
+  const steppingRef = useRef(false);
+  const [stepping, setStepping] = useState(false);
+
+  // Track whether session was started despite missing ingredients
+  const startedWithMissingRef = useRef(false);
+
   // Start or resume session on mount
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +103,9 @@ export default function CookingSession() {
   const currentStep = steps.find(s => s.step_number === current) ?? steps[current - 1];
 
   const goToStep = useCallback(async (n) => {
-    if (!session?.session_id) return;
+    if (!session?.session_id || steppingRef.current) return;
+    steppingRef.current = true;
+    setStepping(true);
     try {
       const res = await updateCookingStep(session.session_id, userId, n);
       if (res?.success) {
@@ -104,11 +113,27 @@ export default function CookingSession() {
       }
     } catch (err) {
       addToast(err.message || 'Failed to update step', 'error');
+    } finally {
+      steppingRef.current = false;
+      setStepping(false);
     }
   }, [session, userId, addToast]);
 
-  // Called when user clicks "Complete Cooking" — shows confirmation modal
+  // Called when user clicks "Complete Cooking" — shows confirmation modal (only if all ingredients were present)
   function handleComplete() {
+    if (startedWithMissingRef.current) {
+      // Skip pantry update — go straight to nutrition log
+      saveRecentlyCookedLocally({
+        recipeId:    recipeId,
+        title:       session?.recipe_title || '',
+        imageUrl:    session?.image_url    || '',
+        cookingTime: session?.cooking_time_min ?? null,
+        difficulty:  session?.difficulty   || '',
+      });
+      setNutritionData(recipeNutritionRef.current);
+      setShowNutritionModal(true);
+      return;
+    }
     setShowCompletionModal(true);
   }
 
@@ -189,6 +214,7 @@ export default function CookingSession() {
 
   // "Start Anyway" from missing modal
   async function handleStartAnyway() {
+    startedWithMissingRef.current = true;
     setShowMissingModal(false);
     setLoading(true);
     try {
@@ -270,6 +296,7 @@ export default function CookingSession() {
               className={`cook-dot ${s.step_number === current ? 'active' : s.step_number < current ? 'done' : ''}`}
               style={{ left: `${(i / Math.max(total - 1, 1)) * 100}%` }}
               onClick={() => goToStep(s.step_number)}
+              disabled={stepping}
               title={`Step ${s.step_number}`}
             />
           ))}
@@ -288,7 +315,7 @@ export default function CookingSession() {
       <div className="cook-nav">
         <button
           className="cook-btn cook-btn-prev"
-          disabled={current <= 1}
+          disabled={current <= 1 || stepping}
           onClick={() => goToStep(current - 1)}
         >
           ← Previous
@@ -297,7 +324,7 @@ export default function CookingSession() {
         {isLast ? (
           <button
             className="cook-btn cook-btn-complete"
-            disabled={completing}
+            disabled={completing || stepping}
             onClick={handleComplete}
           >
             {completing ? 'Completing…' : '✓ Complete Cooking'}
@@ -305,6 +332,7 @@ export default function CookingSession() {
         ) : (
           <button
             className="cook-btn cook-btn-next"
+            disabled={stepping}
             onClick={() => goToStep(current + 1)}
           >
             Next →

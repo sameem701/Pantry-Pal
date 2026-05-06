@@ -237,6 +237,7 @@ export default function MealPlanner() {
   // save template modal
   const [saveTmplModal,     setSaveTmplModal]     = useState(false);
   const [saveTmplName,      setSaveTmplName]      = useState('');
+  const [saveTmplNameTouched, setSaveTmplNameTouched] = useState(false);
   const [saveTmplDays,      setSaveTmplDays]      = useState(new Set());
   const [savingTemplate,    setSavingTemplate]    = useState(false);
   const saveTmplDragRef     = useRef({ active: false, start: null, end: null });
@@ -570,7 +571,7 @@ export default function MealPlanner() {
     try {
       await markMealCooked(userId, dateISO, type);
       setSlotMap(prev => ({ ...prev, [key]: { ...prev[key], isCooked: true } }));
-      addToast('Meal marked as cooked! Pantry updated.', 'success');
+      addToast('Meal marked as cooked!', 'success');
     } catch (err) {
       addToast(err.message || 'Failed to mark as cooked', 'error');
     }
@@ -671,6 +672,10 @@ export default function MealPlanner() {
 
   // ── shopping ───────────────────────────────────────────────────────────────
   async function openShopModal() {
+    if (Object.keys(slotMap).length === 0) {
+      addToast('No meals planned for this week. Add meals first to generate a shopping list.', 'warning');
+      return;
+    }
     setShopModal(true);
     setShopLoading(true);
     setShopItems([]);
@@ -771,7 +776,7 @@ export default function MealPlanner() {
   // Save template modal
   function openSaveTemplateModal() {
     setSaveTmplName('');
-    const preSelected = new Set();
+    setSaveTmplNameTouched(false);
     weekDays.forEach((date, i) => {
       const iso = toISO(date);
       if (MEAL_TYPES.some(t => slotMap[iso + '-' + t])) preSelected.add(i);
@@ -809,6 +814,7 @@ export default function MealPlanner() {
       addToast('Template saved!', 'success');
       setSaveTmplModal(false);
       setSaveTmplName('');
+      setSaveTmplNameTouched(false);
       if (activeTab === 'templates') loadTemplates();
     } catch (err) {
       addToast(err.message || 'Failed to save template', 'error');
@@ -1476,13 +1482,16 @@ export default function MealPlanner() {
             </div>
             <p className="shop-modal-sub">Choose which days to include. Click to toggle · Drag chip-to-chip to range-select · Drag chip to reorder.</p>
             <input
-              className="mp-save-tmpl-input"
+              className={`mp-save-tmpl-input${saveTmplName === '' && saveTmplNameTouched ? ' input-invalid' : ''}`}
               placeholder="Template name..."
               value={saveTmplName}
-              onChange={e => setSaveTmplName(e.target.value)}
+              onChange={e => { setSaveTmplName(e.target.value); setSaveTmplNameTouched(true); }}
               onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
-              style={{ marginBottom: 8 }}
+              style={{ marginBottom: saveTmplName === '' && saveTmplNameTouched ? 2 : 8 }}
             />
+            {saveTmplName === '' && saveTmplNameTouched && (
+              <span className="field-error" style={{ display: 'block', marginBottom: 6 }}>Template name is required</span>
+            )}
 
             {/* Day chip picker */}
             <div className="tmpl-day-picker" style={{ userSelect: 'none' }}>

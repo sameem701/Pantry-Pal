@@ -100,11 +100,15 @@ export default function Pantry() {
   async function handleAdd(e) {
     e.preventDefault();
     if (!selectedIngredient) { setAddError('Search and select an ingredient first.'); return; }
-    if (!addQuantity) { setAddError('Enter a quantity.'); return; }
+    const parsedQty = parseFloat(addQuantity);
+    if (!addQuantity || isNaN(parsedQty) || parsedQty <= 0) {
+      setAddError('Quantity must be greater than 0.');
+      return;
+    }
     setAdding(true);
     setAddError('');
     try {
-      await addPantryItem(userId, selectedIngredient.ingredient_id, parseFloat(addQuantity), addUnit, addLocation);
+      await addPantryItem(userId, selectedIngredient.ingredient_id, parsedQty, addUnit, addLocation);
       setQuery('');
       setSelectedIngredient(null);
       setAddQuantity('');
@@ -214,8 +218,15 @@ export default function Pantry() {
                 step="0.01"
                 placeholder="1"
                 value={addQuantity}
-                onChange={(e) => setAddQuantity(e.target.value)}
+                className={addQuantity && (isNaN(parseFloat(addQuantity)) || parseFloat(addQuantity) <= 0) ? 'input-invalid' : ''}
+                onChange={(e) => {
+                  setAddQuantity(e.target.value);
+                  if (addError === 'Quantity must be greater than 0.') setAddError('');
+                }}
               />
+              {addQuantity && (isNaN(parseFloat(addQuantity)) || parseFloat(addQuantity) <= 0) && (
+                <span className="field-error">Must be greater than 0</span>
+              )}
             </div>
             <div className="add-field">
               <label>Unit</label>
@@ -317,9 +328,16 @@ export default function Pantry() {
               min="0.01"
               step="0.01"
               value={editQuantity}
-              onChange={(e) => setEditQuantity(e.target.value)}
+              className={editQuantity && (isNaN(parseFloat(editQuantity)) || parseFloat(editQuantity) <= 0) ? 'input-invalid' : ''}
+              onChange={(e) => {
+                setEditQuantity(e.target.value);
+                if (editError === 'Quantity must be greater than 0.') setEditError('');
+              }}
               autoFocus
             />
+            {editQuantity && (isNaN(parseFloat(editQuantity)) || parseFloat(editQuantity) <= 0) && (
+              <span className="field-error">Must be greater than 0</span>
+            )}
             <label>Unit</label>
             <select value={editUnit} onChange={(e) => setEditUnit(e.target.value)}>
               {UNITS.map((u) => <option key={u}>{u}</option>)}

@@ -5,8 +5,8 @@ const PDFDocument = require('pdfkit');
 
 const getMealsForRange = async (req, res) => {
     const userId = Number(req.query.user_id);
-    const start  = req.query.start;
-    const end    = req.query.end;
+    const start = req.query.start;
+    const end = req.query.end;
 
     if (!userId || !start || !end) {
         return res.status(400).json({ success: false, message: 'user_id, start, and end are required' });
@@ -84,12 +84,16 @@ const markMealCooked = async (req, res) => {
 
     try {
         const result = await db.query(
-            'SELECT mark_daily_meal_cooked($1, $2, $3) AS response',
+            `UPDATE daily_meals
+             SET is_cooked = TRUE
+             WHERE user_id = $1 AND date = $2 AND meal_type = $3 AND is_cooked = FALSE
+             RETURNING meal_id`,
             [user_id, date, meal_type]
         );
-        const response = result.rows[0]?.response;
-        if (!response?.success) return res.status(400).json(response || { success: false });
-        return res.status(200).json(response);
+        if (result.rowCount === 0) {
+            return res.status(400).json({ success: false, message: 'Slot not found or already marked as cooked' });
+        }
+        return res.status(200).json({ success: true, message: 'Meal marked as cooked' });
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message });
     }
@@ -121,8 +125,8 @@ const suggestMeals = async (req, res) => {
 
 const getMissingIngredients = async (req, res) => {
     const userId = Number(req.query.user_id);
-    const start  = req.query.start;
-    const end    = req.query.end;
+    const start = req.query.start;
+    const end = req.query.end;
 
     if (!userId || !start || !end) {
         return res.status(400).json({ success: false, message: 'user_id, start, and end are required' });
@@ -145,8 +149,8 @@ const getMissingIngredients = async (req, res) => {
 
 const getNutritionForRange = async (req, res) => {
     const userId = Number(req.query.user_id);
-    const start  = req.query.start;
-    const end    = req.query.end;
+    const start = req.query.start;
+    const end = req.query.end;
 
     if (!userId || !start || !end) {
         return res.status(400).json({ success: false, message: 'user_id, start, and end are required' });

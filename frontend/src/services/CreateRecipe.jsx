@@ -401,21 +401,6 @@ export default function CreateRecipe() {
     }
   }
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  async function handleDeleteRecipe() {
-    setConfirmDelete(false);
-    isDirtyRef.current = false;
-    try {
-      const { deleteRecipe: apiDelete } = await import('../api/RecipeApi');
-      await apiDelete(editId, userId);
-      addToast('Recipe deleted.', 'success');
-      navigate('/my-recipes');
-    } catch (err) {
-      addToast(err.message || 'Failed to delete recipe', 'error');
-    }
-  }
-
   if (loadErr) return (
     <div className="page-wrap">
       <p className="form-error">{loadErr}</p>
