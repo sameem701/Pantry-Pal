@@ -253,21 +253,24 @@ export default function ShoppingList() {
                   {checked.length > 0 && <span className="sl-count-label">({checked.length} checked)</span>}
                 </div>
 
-                {/* preview: show all unchecked items (no "+more" text) */}
-                {!isOpen && (
-                  <div className="sl-paper-preview">
-                    {unchecked.map((it, i) => (
-                      <span key={i} className="sl-preview-item">
-                        {it.ingredient_name || it.name}
-                      </span>
-                    ))}
-                    {unchecked.length === 0 && checked.map((it, i) => (
-                      <span key={i} className="sl-preview-item checked">
-                        {it.ingredient_name || it.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {/* preview: show first 3 items then "…and N more" */}
+                {!isOpen && (() => {
+                  const previewSrc = unchecked.length > 0 ? unchecked : checked;
+                  const shown = previewSrc.slice(0, 3);
+                  const rest  = previewSrc.length - shown.length;
+                  return (
+                    <div className="sl-paper-preview">
+                      {shown.map((it, i) => (
+                        <span key={i} className={'sl-preview-item' + (unchecked.length === 0 ? ' checked' : '')}>
+                          {it.ingredient_name || it.name}
+                        </span>
+                      ))}
+                      {rest > 0 && (
+                        <span className="sl-preview-more">…and {rest} more</span>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* card-face quick actions */}
                 {!isOpen && (
@@ -314,11 +317,13 @@ export default function ShoppingList() {
                       {groupByFood ? 'Flat' : 'By Category'}
                     </button>
                     {list.items.some(i => !i.is_checked) && (
-                      <button
-                        className="sl-tool-btn sl-tool-check"
-                        onClick={() => setConfirmMarkAll(list.id)}
-                        title="Mark all as checked"
-                      ><CheckCheck size={14} /> Mark All</button>
+                      <>
+                        <button
+                          className="sl-tool-btn sl-tool-check"
+                          onClick={() => setConfirmMarkAll(list.id)}
+                          title="Select all and add to pantry"
+                        ><CheckCheck size={14} /> Select All</button>
+                      </>
                     )}
                   </div>
                   <p className="sl-check-hint">&#10003; Checking an item automatically adds it to your pantry.</p>

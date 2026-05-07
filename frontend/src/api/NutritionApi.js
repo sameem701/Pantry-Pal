@@ -8,7 +8,7 @@ import { apiRequest } from './client';
 export function logNutritionEntry(userId, recipeId) {
     return apiRequest('/nutrition/log', {
         method: 'POST',
-        body: JSON.stringify({ user_id: userId, recipe_id: recipeId }),
+        body: { user_id: userId, recipe_id: recipeId },
     });
 }
 

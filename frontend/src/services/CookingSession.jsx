@@ -255,10 +255,10 @@ export default function CookingSession() {
     try {
       saveShoppingListLocally(missingIngredients.map(i => ({
         ingredient_name: i.ingredient_name || i.name || '',
-        quantity: i.quantity || '',
+        quantity: String(i.required_qty ?? i.quantity ?? ''),
         unit: i.unit || '',
         ingredient_id: i.ingredient_id || null,
-        is_checked: true,
+        is_checked: false,
       })), 'Cooking Session');
       addToast('Shopping list saved — you can still start cooking.', 'success');
     } catch {

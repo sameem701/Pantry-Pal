@@ -1739,6 +1739,8 @@ $$ LANGUAGE plpgsql;
 
 
 -- 10.2  Get nutrition summary for a date range
+--       Combines meal-planner meals (daily_meals) AND standalone cooking-session
+--       log entries (nutrition_log) so both sources appear in the dashboard.
 CREATE OR REPLACE FUNCTION get_nutrition_for_range(
     p_user_id INTEGER,
     p_start   DATE,
@@ -1758,26 +1760,58 @@ BEGIN
     ) ORDER BY date)
     INTO v_daily
     FROM (
-        SELECT dm.date,
-            SUM(rn.calories)  AS total_calories,
-            SUM(rn.protein_g) AS total_protein,
-            SUM(rn.carbs_g)   AS total_carbs,
-            SUM(rn.fat_g)     AS total_fat
-        FROM daily_meals dm
-        JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
-        WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end
-        GROUP BY dm.date
+        SELECT date,
+            SUM(calories)  AS total_calories,
+            SUM(protein_g) AS total_protein,
+            SUM(carbs_g)   AS total_carbs,
+            SUM(fat_g)     AS total_fat
+        FROM (
+            -- Meal-planner planned meals
+            SELECT dm.date,
+                rn.calories, rn.protein_g, rn.carbs_g, rn.fat_g
+            FROM daily_meals dm
+            JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
+            WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end
+            UNION ALL
+            -- Standalone cooking-session logs (not in meal planner)
+            SELECT nl.log_date AS date,
+                nl.calories, nl.protein_g, nl.carbs_g, nl.fat_g
+            FROM nutrition_log nl
+            WHERE nl.user_id = p_user_id
+              AND nl.log_date BETWEEN p_start AND p_end
+              AND NOT EXISTS (
+                  SELECT 1 FROM daily_meals dm2
+                  WHERE dm2.user_id = p_user_id
+                    AND dm2.recipe_id = nl.recipe_id
+                    AND dm2.date = nl.log_date
+              )
+        ) AS all_entries
+        GROUP BY date
     ) AS daily_totals;
 
     SELECT
-        COALESCE(SUM(rn.calories), 0)  AS total_calories,
-        COALESCE(SUM(rn.protein_g), 0) AS total_protein,
-        COALESCE(SUM(rn.carbs_g), 0)   AS total_carbs,
-        COALESCE(SUM(rn.fat_g), 0)     AS total_fat
+        COALESCE(SUM(calories), 0)  AS total_calories,
+        COALESCE(SUM(protein_g), 0) AS total_protein,
+        COALESCE(SUM(carbs_g), 0)   AS total_carbs,
+        COALESCE(SUM(fat_g), 0)     AS total_fat
     INTO v_totals
-    FROM daily_meals dm
-    JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
-    WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end;
+    FROM (
+        SELECT rn.calories, rn.protein_g, rn.carbs_g, rn.fat_g
+        FROM daily_meals dm
+        JOIN recipe_nutrition rn ON rn.recipe_id = dm.recipe_id
+        WHERE dm.user_id = p_user_id AND dm.date BETWEEN p_start AND p_end
+        UNION ALL
+        SELECT nl.calories, nl.protein_g, nl.carbs_g, nl.fat_g
+        FROM nutrition_log nl
+        WHERE nl.user_id = p_user_id
+          AND nl.log_date BETWEEN p_start AND p_end
+          AND NOT EXISTS (
+              SELECT 1 FROM daily_meals dm2
+              WHERE dm2.user_id = p_user_id
+                AND dm2.recipe_id = nl.recipe_id
+                AND dm2.date = nl.log_date
+          )
+    ) AS all_totals;
 
     RETURN json_build_object('success', true,
         'totals', json_build_object(
