@@ -670,7 +670,7 @@
 }
 .recipes-search:focus {
   outline: none;
-  border-color: var(--accent-orange, #e8622a);
+  border-color: var(--accent-primary, #e8622a);
 }
 .search-clear {
   position: absolute;
@@ -688,8 +688,8 @@
 .btn-clear-filters {
   padding: 8px 14px;
   background: transparent;
-  color: var(--accent-orange, #e8622a);
-  border: 1px solid var(--accent-orange, #e8622a);
+  color: var(--accent-primary, #e8622a);
+  border: 1px solid var(--accent-primary, #e8622a);
   border-radius: var(--radius-sm, 6px);
   font-size: 0.82rem;
   cursor: pointer;

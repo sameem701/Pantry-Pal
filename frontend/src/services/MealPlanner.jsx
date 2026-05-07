@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Check, X } from 'lucide-react';
+import { Check, X, GripVertical, Heart, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Plus } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 import DietaryDropdown from '../components/DietaryDropdown';
 import CuisineDropdown from '../components/CuisineDropdown';
@@ -926,8 +926,8 @@ export default function MealPlanner() {
 
           <div className="mp-date-nav">
             <div className="mp-nav-group">
-              <button className="mp-nav-outer" onClick={() => nav(-7)} title="Back 1 week">&laquo;</button>
-              <button className="mp-nav-inner" onClick={() => nav(-1)} title="Back 1 day">&lsaquo;</button>
+              <button className="mp-nav-outer" onClick={() => nav(-7)} title="Back 1 week"><ChevronsLeft size={16} /></button>
+              <button className="mp-nav-inner" onClick={() => nav(-1)} title="Back 1 day"><ChevronLeft size={16} /></button>
             </div>
             <div className="week-nav-center">
               <span className="week-range">{fmtRange(startDate)}</span>
@@ -936,8 +936,8 @@ export default function MealPlanner() {
               )}
             </div>
             <div className="mp-nav-group">
-              <button className="mp-nav-inner" onClick={() => nav(1)}  title="Forward 1 day">&rsaquo;</button>
-              <button className="mp-nav-outer" onClick={() => nav(7)}  title="Forward 1 week">&raquo;</button>
+              <button className="mp-nav-inner" onClick={() => nav(1)}  title="Forward 1 day"><ChevronRight size={16} /></button>
+              <button className="mp-nav-outer" onClick={() => nav(7)}  title="Forward 1 week"><ChevronsRight size={16} /></button>
             </div>
           </div>
         </div>
@@ -1037,7 +1037,7 @@ export default function MealPlanner() {
                     >
                       <span className="chip-title">{title}</span>
                       {s.day_of_week && <span className="chip-day">{s.day_of_week.slice(0,3)} &middot; {MEAL_LABELS[s.meal_type] || s.meal_type}</span>}
-                      <button className="chip-apply" title="Select to place in calendar" onClick={() => handleRecipeSelect(s)}>+</button>
+                      <button className="chip-apply" title="Select to place in calendar" onClick={() => handleRecipeSelect(s)}><Plus size={12} /></button>
                     </div>
                   );
                 })}
@@ -1130,7 +1130,7 @@ export default function MealPlanner() {
                               <span className="slot-title">{slot.title}</span>
                               {!isPast && !slot.isCooked && !clearMode && iso === todayIso && (
                                 <div className="slot-actions">
-                                  <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(iso, type, e)}>Cook</button>
+                                  <button className="btn-cook-slot" title="Mark as cooked" onClick={e => handleMarkCooked(iso, type, e)}>Cooked</button>
                                   <button className="btn-remove-slot" title="Remove" onClick={e => handleRemove(iso, type, e)}><X size={12} /></button>
                                 </div>
                               )}
@@ -1249,7 +1249,7 @@ export default function MealPlanner() {
                       onDoubleClick={() => handleRecipeSelect(recipe)}
                       title="Double-click to select, then click a calendar slot to place"
                     >
-                      <span className="mp-drag-handle">&#x2630;</span>
+                      <span className="mp-drag-handle"><GripVertical size={14} /></span>
                       <div className="mp-recipe-card-info">
                         <span className="mp-recipe-title">{recipe.title}</span>
                         <div className="mp-recipe-meta">
@@ -1266,7 +1266,7 @@ export default function MealPlanner() {
                         onClick={e => handleFavourite(e, recipe.recipe_id)}
                         title={recipe.is_favourite ? 'Unsave' : 'Save'}
                       >
-                        {recipe.is_favourite ? '\u2665' : '\u2661'}
+                        {recipe.is_favourite ? <Heart size={14} fill="currentColor" /> : <Heart size={14} />}
                       </button>
                     </div>
                   );
@@ -1298,9 +1298,9 @@ export default function MealPlanner() {
           const t   = pc + cc + fc + oc || 1;
           return [
             { label: 'Protein', pct: (pc / t) * 100, color: '#2e9068', grams: Math.round(totals.protein), kcal: Math.round(pc) },
-            { label: 'Carbs',   pct: (cc / t) * 100, color: '#3d31b0', grams: Math.round(totals.carbs),   kcal: Math.round(cc) },
+            { label: 'Carbs',   pct: (cc / t) * 100, color: '#5a4fcf', grams: Math.round(totals.carbs),   kcal: Math.round(cc) },
             { label: 'Fat',     pct: (fc / t) * 100, color: '#c97c28', grams: Math.round(totals.fat),     kcal: Math.round(fc) },
-            { label: 'Other',   pct: (oc / t) * 100, color: '#c03060', grams: null,                       kcal: Math.round(oc) },
+            { label: 'Other',   pct: (oc / t) * 100, color: '#a04a3a', grams: null,                       kcal: Math.round(oc) },
           ];
         }
 
@@ -1323,9 +1323,9 @@ export default function MealPlanner() {
         ];
         const FALLBACK_SLICES = [
           { pct: 30, color: '#2e9068' },
-          { pct: 40, color: '#3d31b0' },
+          { pct: 40, color: '#5a4fcf' },
           { pct: 25, color: '#c97c28' },
-          { pct: 5,  color: '#c03060' },
+          { pct: 5,  color: '#a04a3a' },
         ];
 
         const nutDays = weekDays.map(date => {

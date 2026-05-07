@@ -10,9 +10,9 @@ const TYPE_ICON = {
   info:    <Info        size={16} />,
 };
 const TYPE_ACCENT = {
-  success: '#4caf8c',
-  error:   '#ff5a5a',
-  warning: '#e8a050',
+  success: '#388e6d',
+  error:   '#a04a3a',
+  warning: '#b8860b',
   info:    '#5a4fcf',
 };
 

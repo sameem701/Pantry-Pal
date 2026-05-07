@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Loader, Pencil, Trash2, Thermometer, Archive, Snowflake, LayoutGrid } from 'lucide-react';
+import { Loader, Pencil, Trash2, Thermometer, Archive, Snowflake, LayoutGrid, Plus, Leaf } from 'lucide-react';
 import {
   getPantry, addPantryItem, updatePantryItem,
   deletePantryItem, searchIngredients,
@@ -260,7 +260,7 @@ export default function Pantry() {
           </div>
 
           <button className="add-btn" type="submit" disabled={adding || !selectedIngredient}>
-            {adding ? 'Adding…' : '+ Add to Pantry'}
+            {adding ? 'Adding…' : <><Plus size={14} /> Add to Pantry</>}
           </button>
         </form>
       </div>
@@ -290,9 +290,10 @@ export default function Pantry() {
         {loading ? (
           <div className="pantry-loading">Loading pantry…</div>
         ) : totalItems === 0 ? (
-          <div className="pantry-empty">
-            <p>🥦 Your pantry is empty.</p>
-            <p>Search for an ingredient on the left to get started.</p>
+          <div className="empty-state">
+            <span className="empty-state-icon"><Leaf size={40} /></span>
+            <p className="empty-state-title">Your pantry is empty.</p>
+            <p className="empty-state-body">Search for an ingredient on the left to get started.</p>
           </div>
         ) : (
           Object.entries(grouped).map(([loc, items]) =>

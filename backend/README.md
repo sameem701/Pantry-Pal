@@ -1,18 +1,31 @@
-# PantryPal Backend
+# PantryPal — Backend
 
-Node.js/Express backend for the PantryPal meal planning application.
+Node.js / Express REST API for the PantryPal application.
 
-## Installation
+> **Full setup instructions, feature list, and team contributions are in the [root README](../README.md).**
+
+## Quick Start
 
 ```bash
+# 1. Create backend/.env with your DATABASE_URL (see root README)
+# 2. Install dependencies
 npm install
+
+# 3. Start in development mode (nodemon, auto-reload)
+npm run dev
+
+# 4. Start in production mode
+npm start
 ```
 
-## Running
+Server listens on `PORT` from `.env`, defaulting to **5001**.
 
-```bash
-npm run dev  # Development mode
-npm start    # Production mode
-```
+## Key Directories
 
-Server runs on port 5000 by default.
+| Path | Contents |
+|---|---|
+| `routes/` | Express routers (auth, recipes, pantry, meal-plans, nutrition, uploads) |
+| `controllers/` | Business logic handlers |
+| `config/database.js` | PostgreSQL pool setup |
+| `scripts/` | One-off migration / seeding scripts |
+| `uploads/` | Static recipe images served at `/uploads/*` |

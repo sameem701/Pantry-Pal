@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { ChevronUp, ChevronDown, CheckCheck, Loader2, Check, LayoutList, Tag } from 'lucide-react';
+import { groupItems } from '../utils/foodGroups';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -17,6 +19,7 @@ export default function ShoppingList() {
   const [openId,         setOpenId]         = useState(null);
   const [addingIdx,      setAddingIdx]      = useState(null);
   const [confirmMarkAll, setConfirmMarkAll] = useState(null);
+  const [groupByFood,    setGroupByFood]    = useState(false);
   const pendingRef = useRef({});
 
   function changeOpenId(id) {
@@ -145,18 +148,32 @@ export default function ShoppingList() {
     if (failed > 0) addToast(failed + ' item' + (failed !== 1 ? 's' : '') + ' could not be added.', 'warning');
   }
 
-  function copyToText(list) {
+  function buildTextContent(list) {
     const header = list.source + ' - ' + new Date(list.date).toLocaleString();
     const lines  = list.items.map(i =>
       (i.is_checked ? '[x] ' : '[ ] ') +
       (i.ingredient_name || i.name || '') +
       (i.quantity ? '  ' + i.quantity + (i.unit ? ' ' + i.unit : '') : '')
     );
-    const hint = '\n(Check boxes when you have the item)';
-    const text = header + '\n' + '-'.repeat(40) + '\n' + lines.join('\n') + hint;
-    navigator.clipboard.writeText(text)
+    return header + '\n' + '-'.repeat(40) + '\n' + lines.join('\n') + '\n\n(Check boxes when you have the item)';
+  }
+
+  function copyToText(list) {
+    navigator.clipboard.writeText(buildTextContent(list))
       .then(() => addToast('List copied to clipboard!', 'success'))
       .catch(() => addToast('Could not copy to clipboard', 'error'));
+  }
+
+  function downloadTxt(list) {
+    const text = buildTextContent(list);
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = (list.source || 'shopping-list').replace(/[^a-z0-9]/gi, '-').toLowerCase() + '.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('Text file downloaded!', 'success');
   }
 
   function downloadPdf(list) {
@@ -260,7 +277,7 @@ export default function ShoppingList() {
                         className="sl-face-btn sl-face-check"
                         onClick={() => setConfirmMarkAll(list.id)}
                         title="Mark all as checked"
-                      >&#10003; Mark All</button>
+                      ><CheckCheck size={14} /> Mark All</button>
                     )}
                     <button
                       className="sl-face-btn sl-face-danger"
@@ -278,7 +295,7 @@ export default function ShoppingList() {
                   </div>
                 )}
 
-                <span className="sl-paper-toggle">{isOpen ? '\u25b2' : '\u25bc'}</span>
+                <span className="sl-paper-toggle">{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
               </div>
 
               {/* ── expanded view ─────────────────────────────────────────── */}
@@ -286,17 +303,55 @@ export default function ShoppingList() {
                 <div className="sl-paper-expanded">
                   <div className="sl-expanded-toolbar">
                     <button className="sl-tool-btn" onClick={() => copyToText(list)} title="Copy to clipboard">Copy Text</button>
+                    <button className="sl-tool-btn" onClick={() => downloadTxt(list)}  title="Download as .txt">Download .txt</button>
                     <button className="sl-tool-btn" onClick={() => downloadPdf(list)}  title="Download as PDF">Download PDF</button>
+                    <button
+                      className={`sl-tool-btn sl-tool-group${groupByFood ? ' sl-tool-group--on' : ''}`}
+                      onClick={() => setGroupByFood(v => !v)}
+                      title={groupByFood ? 'Show flat list' : 'Group by food category'}
+                    >
+                      {groupByFood ? <LayoutList size={13} /> : <Tag size={13} />}
+                      {groupByFood ? 'Flat' : 'By Category'}
+                    </button>
                     {list.items.some(i => !i.is_checked) && (
                       <button
                         className="sl-tool-btn sl-tool-check"
                         onClick={() => setConfirmMarkAll(list.id)}
                         title="Mark all as checked"
-                      >&#10003; Mark All</button>
+                      ><CheckCheck size={14} /> Mark All</button>
                     )}
                   </div>
                   <p className="sl-check-hint">&#10003; Checking an item automatically adds it to your pantry.</p>
 
+                  {groupByFood ? (
+                    groupItems(list.items).map(({ group, items: gItems }) => (
+                      <div key={group} className="sl-group">
+                        <div className="sl-group-label">{group}</div>
+                        <div className="sl-expanded-items">
+                          {gItems.map(item => {
+                            const idx = list.items.indexOf(item);
+                            const isAdding = addingIdx && addingIdx.listId === list.id && addingIdx.idx === idx;
+                            return (
+                              <div key={idx} className={'sl-exp-item' + (item.is_checked ? ' checked' : '') + (isAdding ? ' adding' : '')}>
+                                <button
+                                  className={'sl-exp-check' + (item.is_checked ? ' ticked' : '')}
+                                  onClick={() => handleToggle(list.id, idx)}
+                                  title={item.is_checked ? 'Already in pantry' : 'Check — adds to pantry'}
+                                  disabled={isAdding || item.is_checked}
+                                >
+                                  {isAdding ? <Loader2 size={12} className="spin" /> : item.is_checked ? <Check size={12} /> : ''}
+                                </button>
+                                <span className="sl-exp-name">{item.ingredient_name || item.name}</span>
+                                {item.quantity && (
+                                  <span className="sl-exp-qty">{item.quantity}{item.unit ? ' ' + item.unit : ''}</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
                   <div className="sl-expanded-items">
                     {list.items.map((item, idx) => {
                       const isAdding = addingIdx && addingIdx.listId === list.id && addingIdx.idx === idx;
@@ -308,7 +363,7 @@ export default function ShoppingList() {
                             title={item.is_checked ? 'Already in pantry' : 'Check — adds to pantry'}
                             disabled={isAdding || item.is_checked}
                           >
-                            {isAdding ? '\u2026' : item.is_checked ? '\u2713' : ''}
+                            {isAdding ? <Loader2 size={12} className="spin" /> : item.is_checked ? <Check size={12} /> : ''}
                           </button>
                           <span className="sl-exp-name">{item.ingredient_name || item.name}</span>
                           {item.quantity && (
@@ -318,6 +373,7 @@ export default function ShoppingList() {
                       );
                     })}
                   </div>
+                  )}
                 </div>
               )}
             </div>

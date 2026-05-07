@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 /**
  * Reusable confirmation modal for destructive actions.
@@ -16,7 +17,7 @@ export default function ConfirmModal({
   message,
   confirmLabel = 'Delete',
   cancelLabel  = 'Cancel',
-  icon = '!',
+  icon = <AlertTriangle size={32} />,
   onConfirm,
   onCancel,
 }) {

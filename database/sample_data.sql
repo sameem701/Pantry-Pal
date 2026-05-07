@@ -3311,3 +3311,33 @@ insert into daily_meals (
                                                                                                                                                               false
                                                                                                                                                               )
                                                                                                                                                               ;  -- Salmon (planned)
+
+
+-- ============================================================
+--  RECIPE DESCRIPTIONS
+-- ============================================================
+UPDATE recipes SET description = 'A timeless Roman classic featuring al dente spaghetti tossed in a rich, velvety sauce. The creamy texture is achieved authentically using only beaten eggs, Pecorino Romano cheese, and pasta water. Crispy pancetta adds a savory, salty crunch, finished with a generous dusting of freshly cracked black pepper.' WHERE recipe_id = 1;
+UPDATE recipes SET description = 'Tender, marinated chunks of chicken are fire-roasted to perfection before being simmered in a vibrant curry. The luscious tomato-based sauce is heavily spiced, creamy, and infused with earthy garam masala. A delicate swirl of fresh cream and a garnish of vibrant cilantro perfectly balance the mild, warming heat.' WHERE recipe_id = 2;
+UPDATE recipes SET description = 'A modern brunch staple built upon a thick, toasted slice of rustic artisan sourdough bread. Generously layered with freshly smashed, seasoned avocado mixed with a hint of citrus and chili flakes. Crowned with a perfectly poached egg that releases a rich, golden yolk, binding the fresh flavors together.' WHERE recipe_id = 3;
+UPDATE recipes SET description = 'A quintessential comfort food masterpiece featuring a thick, juicy, perfectly seared ground beef patty. Blanket-melted sharp cheddar cheese drapes over the hot beef, paired with crisp lettuce and ripe tomatoes. Tucked between a buttery, toasted brioche bun and layered with a savory, tangy house signature sauce.' WHERE recipe_id = 4;
+UPDATE recipes SET description = 'A fragrant, aromatic Southeast Asian delicacy boasting a vibrant, emerald-green coconut milk broth. Infused with a harmonious blend of spicy green chilies, lemongrass, galangal, and fresh Thai basil. Packed with tender chicken, crisp bamboo shoots, and green bell peppers for a satisfying, complex bite.' WHERE recipe_id = 5;
+UPDATE recipes SET description = 'A crisp, refreshing Mediterranean classic that celebrates the vibrant flavors of fresh, raw produce. Tossed with juicy cherry tomatoes, crunchy cucumbers, thinly sliced red onions, and briny Kalamata olives. Topped with a generous slab of tangy feta cheese and lightly dressed in premium extra virgin olive oil.' WHERE recipe_id = 6;
+UPDATE recipes SET description = 'A beloved Mexican street food favorite served in warm, lightly charred soft corn tortillas. Filled with savory, heavily seasoned ground beef infused with cumin, chili powder, and aromatic garlic. Brightened by a topping of fresh pico de gallo, crumbled cotija cheese, and a zesty squeeze of lime juice.' WHERE recipe_id = 7;
+UPDATE recipes SET description = 'A soul-warming bowl of Japanese comfort food anchored by a deeply savory, umami-rich fermented soybean broth. Filled with perfectly chewy, alkaline wheat noodles that beautifully hold the complex, hearty liquid. Topped with melt-in-your-mouth slices of chashu pork, a soft-boiled jammy egg, and crisp fresh scallions.' WHERE recipe_id = 8;
+UPDATE recipes SET description = 'An elegant, health-conscious dish highlighting a thick, flaky fillet of premium, fresh Atlantic salmon. Pan-seared to achieve a crispy, golden-brown skin while maintaining a tender, moist, and buttery interior. Bathed in a bright, fragrant pan sauce made from freshly squeezed lemon juice, garlic, and chopped dill.' WHERE recipe_id = 9;
+UPDATE recipes SET description = 'A decadent, show-stopping dessert featuring a delicate, spongy dark chocolate cake exterior. Breaking the surface reveals a hidden center of warm, glossy, molten chocolate that beautifully oozes onto the plate. The intense, rich cocoa flavor is perfectly offset by a light dusting of powdered sugar and fresh tart berries.' WHERE recipe_id = 10;
+
+-- ============================================================
+--  RECIPE IMAGES
+--  Run after images are placed in backend/uploads/
+-- ============================================================
+UPDATE recipes SET image_url = '/uploads/recipe-spaghetti-carbonara.jpg'  WHERE recipe_id = 1;
+UPDATE recipes SET image_url = '/uploads/recipe-chicken-tikka-masala.jpg' WHERE recipe_id = 2;
+UPDATE recipes SET image_url = '/uploads/recipe-avocado-toast.jpg'        WHERE recipe_id = 3;
+UPDATE recipes SET image_url = '/uploads/recipe-classic-beef-burger.jpg'  WHERE recipe_id = 4;
+UPDATE recipes SET image_url = '/uploads/recipe-thai-green-curry.jpg'     WHERE recipe_id = 5;
+UPDATE recipes SET image_url = '/uploads/recipe-greek-salad.jpg'          WHERE recipe_id = 6;
+UPDATE recipes SET image_url = '/uploads/recipe-beef-tacos.jpg'           WHERE recipe_id = 7;
+UPDATE recipes SET image_url = '/uploads/recipe-miso-ramen.jpg'           WHERE recipe_id = 8;
+UPDATE recipes SET image_url = '/uploads/recipe-lemon-herb-salmon.jpg'    WHERE recipe_id = 9;
+UPDATE recipes SET image_url = '/uploads/recipe-chocolate-lava-cake.jpg'  WHERE recipe_id = 10;

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { ArrowLeft, ArrowRight, Check, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, AlertTriangle, Timer, Play, Pause, RotateCcw } from 'lucide-react';
 import {
   startCookingSession,
   getCookingSession,
@@ -45,6 +45,12 @@ export default function CookingSession() {
   // Prevent concurrent step-change API calls
   const steppingRef = useRef(false);
   const [stepping, setStepping] = useState(false);
+
+  // ── Per-step timer ───────────────────────────────────────────────────────
+  const [timerSeconds, setTimerSeconds]   = useState(0);
+  const [timerRunning, setTimerRunning]   = useState(false);
+  const [timerInput,   setTimerInput]     = useState('');
+  const timerRef = useRef(null);
 
   // Track whether session was started despite missing ingredients
   const startedWithMissingRef = useRef(false);
@@ -102,6 +108,53 @@ export default function CookingSession() {
   const total   = session?.total_steps  ?? steps.length;
 
   const currentStep = steps.find(s => s.step_number === current) ?? steps[current - 1];
+
+  // Parse a time hint (e.g. "5 minutes", "30 seconds") from instruction text
+  const parsedHint = useMemo(() => {
+    const text = currentStep?.instruction_text ?? '';
+    const m = text.match(/(\d+)\s*(?:-\s*\d+\s*)?(?:to\s+\d+\s+)?(minute|min|second|sec)/i);
+    if (!m) return null;
+    const n = parseInt(m[1], 10);
+    return /sec/i.test(m[2]) ? n : n * 60;
+  }, [currentStep]);
+
+  // Reset timer when step changes
+  useEffect(() => {
+    clearInterval(timerRef.current);
+    setTimerRunning(false);
+    setTimerSeconds(0);
+    setTimerInput('');
+  }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (timerRunning && timerSeconds > 0) {
+      timerRef.current = setInterval(() => {
+        setTimerSeconds(s => {
+          if (s <= 1) {
+            clearInterval(timerRef.current);
+            setTimerRunning(false);
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [timerRunning, timerSeconds]);
+
+  function startTimer(secs) {
+    const s = Math.max(1, Math.round(secs));
+    setTimerSeconds(s);
+    setTimerRunning(true);
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
 
   const goToStep = useCallback(async (n) => {
     if (!session?.session_id || steppingRef.current) return;
@@ -310,6 +363,59 @@ export default function CookingSession() {
         <p className="cook-instruction">
           {currentStep?.instruction_text ?? '—'}
         </p>
+
+        {/* ── Timer ── */}
+        <div className="cook-timer">
+          {timerSeconds > 0 ? (
+            <div className={`cook-timer-display${timerSeconds <= 10 && timerRunning ? ' cook-timer-urgent' : ''}`}>
+              <Timer size={15} />
+              <span className="cook-timer-count">{formatTime(timerSeconds)}</span>
+              <button
+                className="cook-timer-ctrl"
+                onClick={() => setTimerRunning(r => !r)}
+                title={timerRunning ? 'Pause' : 'Resume'}
+              >
+                {timerRunning ? <Pause size={13} /> : <Play size={13} />}
+              </button>
+              <button
+                className="cook-timer-ctrl"
+                onClick={() => { clearInterval(timerRef.current); setTimerRunning(false); setTimerSeconds(0); }}
+                title="Reset"
+              >
+                <RotateCcw size={13} />
+              </button>
+            </div>
+          ) : (
+            <div className="cook-timer-set">
+              {parsedHint && (
+                <button
+                  className="cook-timer-hint"
+                  onClick={() => startTimer(parsedHint)}
+                >
+                  <Timer size={13} /> {parsedHint >= 60 ? `${Math.round(parsedHint / 60)} min` : `${parsedHint}s`}
+                </button>
+              )}
+              <div className="cook-timer-custom">
+                <input
+                  className="cook-timer-input"
+                  type="number"
+                  min="1"
+                  placeholder="min"
+                  value={timerInput}
+                  onChange={e => setTimerInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && timerInput) startTimer(Number(timerInput) * 60); }}
+                />
+                <button
+                  className="cook-timer-go"
+                  disabled={!timerInput}
+                  onClick={() => { if (timerInput) startTimer(Number(timerInput) * 60); }}
+                >
+                  <Play size={12} /> Set
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Navigation */}

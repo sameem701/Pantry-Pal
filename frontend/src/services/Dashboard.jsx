@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Sparkles, TriangleAlert, Utensils, UtensilsCrossed, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getDailyNutritionLog } from '../api/NutritionApi';
@@ -129,11 +130,11 @@ export default function Dashboard() {
       {/* ── Greeting header ── */}
       <header className="db-header">
         <div>
-          <h1 className="db-greeting">{greeting}, {firstName} 👋</h1>
+          <h1 className="db-greeting">{greeting}, {firstName} <Sparkles size={20} className="db-greeting-icon" /></h1>
           <p className="db-date">{dateLabel}</p>
         </div>
         <button className="db-cook-shortcut" onClick={() => navigate('/recipes?mode=pantry')}>
-          🍳 What can I cook today?
+          <UtensilsCrossed size={15} /> What can I cook today?
         </button>
       </header>
 
@@ -143,10 +144,10 @@ export default function Dashboard() {
         <section className="db-card db-card-nutrition">
           <h2 className="db-card-title">Today's Nutrition</h2>
           <div className="db-macro-rings">
-            <MacroRing label="Calories" value={Math.round(totals.calories)} target={TARGETS.calories} color="#4caf50" />
-            <MacroRing label="Protein"  value={Math.round(totals.protein_g)} target={TARGETS.protein_g} color="#2196f3" unit="g" />
-            <MacroRing label="Carbs"    value={Math.round(totals.carbs_g)}   target={TARGETS.carbs_g}   color="#ff9800" unit="g" />
-            <MacroRing label="Fat"      value={Math.round(totals.fat_g)}     target={TARGETS.fat_g}     color="#e91e63" unit="g" />
+            <MacroRing label="Calories" value={Math.round(totals.calories)} target={TARGETS.calories} color="var(--accent-green)" />
+            <MacroRing label="Protein"  value={Math.round(totals.protein_g)} target={TARGETS.protein_g} color="var(--accent-purple)" unit="g" />
+            <MacroRing label="Carbs"    value={Math.round(totals.carbs_g)}   target={TARGETS.carbs_g}   color="var(--accent-warm)" unit="g" />
+            <MacroRing label="Fat"      value={Math.round(totals.fat_g)}     target={TARGETS.fat_g}     color="var(--accent-red)" unit="g" />
           </div>
           {totals.calories === 0 && (
             <p className="db-empty-hint">Cook a recipe to log your first meal today.</p>
@@ -168,7 +169,7 @@ export default function Dashboard() {
                   key={meal.meal_type}
                   className={`db-meal-item ${meal.meal_type === currentSlot ? 'db-meal-current' : ''}`}
                 >
-                  {meal.meal_type === currentSlot && <span className="db-meal-arrow">▶</span>}
+                  {meal.meal_type === currentSlot && <span className="db-meal-arrow"><ChevronRight size={14} /></span>}
                   <div className="db-meal-info">
                     <span className="db-meal-type">{meal.meal_type}</span>
                     <span className="db-meal-title">{meal.recipe_title || meal.title || '—'}</span>
@@ -199,7 +200,7 @@ export default function Dashboard() {
                 <span className="db-pantry-label">items stocked</span>
               </div>
               {lowItems > 0 && (
-                <p className="db-pantry-warning">⚠️ {lowItems} item{lowItems > 1 ? 's' : ''} running low</p>
+                <p className="db-pantry-warning"><TriangleAlert size={14} /> {lowItems} item{lowItems > 1 ? 's' : ''} running low</p>
               )}
               <button className="db-link db-pantry-link" onClick={() => navigate('/pantry')}>
                 Manage pantry →
@@ -222,7 +223,7 @@ export default function Dashboard() {
                   {r.imageUrl ? (
                     <img className="db-rc-img" src={r.imageUrl} alt={r.title} />
                   ) : (
-                    <span className="db-rc-icon">🍽️</span>
+                    <span className="db-rc-icon"><Utensils size={20} /></span>
                   )}
                   <span className="db-rc-name">{r.title}</span>
                 </button>

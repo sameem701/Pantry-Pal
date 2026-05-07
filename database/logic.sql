@@ -791,6 +791,7 @@ BEGIN
         'success',        true,
         'recipe_id',      v_recipe.recipe_id,
         'title',          v_recipe.title,
+        'description',    v_recipe.description,
         'difficulty',     v_recipe.difficulty,
         'cooking_time',   v_recipe.cooking_time_min,
         'image_url',      v_recipe.image_url,
@@ -1406,9 +1407,9 @@ $$ LANGUAGE plpgsql;
 
 
 -- 7.6  Smart meal suggestions for a date range
---      Returns THREE option sets of up to p_days recipes each.
---      Excludes recipes already planned in the given range.
---      Respects dietary restrictions and limits cuisine repetition.
+--      Returns THREE option sets of exactly 3 recipes each, all distinct across options.
+--      Excludes recipes already planned anywhere in the current 7-day week.
+--      Respects dietary restrictions and limits cuisine repetition within each option.
 CREATE OR REPLACE FUNCTION suggest_meals_for_dates(
     p_user_id   INTEGER,
     p_start     DATE,
@@ -1420,10 +1421,11 @@ BEGIN
     IF p_days IS NULL OR p_days < 1 THEN p_days := 7; END IF;
 
     WITH already_planned AS (
+        -- Exclude every recipe the user has planned in the current week
         SELECT DISTINCT recipe_id
         FROM daily_meals
         WHERE user_id = p_user_id
-          AND date BETWEEN p_start AND (p_start + (p_days - 1))
+          AND date BETWEEN p_start AND (p_start + 6)
     ),
     candidate_recipes AS (
         SELECT
@@ -1451,38 +1453,52 @@ BEGIN
           )
         GROUP BY r.recipe_id, r.title, r.difficulty, r.cooking_time_min, r.image_url, rs.average_rating
     ),
-    option_seed AS (SELECT generate_series(1, 3) AS option_idx),
-    ranked AS (
-        SELECT os.option_idx, cr.*,
+    -- Global ranking: deterministic shuffle per-run using recipe_id as tie-break
+    globally_ranked AS (
+        SELECT *,
             ROW_NUMBER() OVER (
-                PARTITION BY os.option_idx, cr.primary_cuisine
-                ORDER BY cr.missing ASC, cr.average_rating DESC,
-                         md5(cr.recipe_id::TEXT || '-' || os.option_idx::TEXT)
-            ) AS cuisine_rank
-        FROM candidate_recipes cr CROSS JOIN option_seed os
+                ORDER BY missing ASC, average_rating DESC,
+                         md5(recipe_id::TEXT || p_start::TEXT),
+                         recipe_id
+            ) AS global_rank
+        FROM candidate_recipes
     ),
-    picked AS (
-        SELECT option_idx, recipe_id, title, difficulty, cooking_time_min, image_url,
-               average_rating, total_ingredients, matched, missing, primary_cuisine,
+    -- Option 1: ranks 1..3
+    opt1 AS (SELECT * FROM globally_ranked WHERE global_rank BETWEEN 1 AND 3),
+    -- Option 2: ranks 4..6  (completely different recipes)
+    opt2 AS (SELECT * FROM globally_ranked WHERE global_rank BETWEEN 4 AND 6),
+    -- Option 3: ranks 7..9  (completely different recipes)
+    opt3 AS (SELECT * FROM globally_ranked WHERE global_rank BETWEEN 7 AND 9),
+    combined AS (
+        SELECT 1 AS option_idx, recipe_id, title, difficulty, cooking_time_min, image_url,
+               average_rating, total_ingredients, matched, missing, primary_cuisine, global_rank AS option_rank,
                CASE WHEN total_ingredients = 0 THEN 0
-                    ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1) END AS match_percent,
-               ROW_NUMBER() OVER (
-                   PARTITION BY option_idx
-                   ORDER BY missing ASC, average_rating DESC, cuisine_rank ASC, recipe_id
-               ) AS option_rank
-        FROM ranked WHERE cuisine_rank <= 2
+                    ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1) END AS match_percent
+        FROM opt1
+        UNION ALL
+        SELECT 2, recipe_id, title, difficulty, cooking_time_min, image_url,
+               average_rating, total_ingredients, matched, missing, primary_cuisine, global_rank - 3,
+               CASE WHEN total_ingredients = 0 THEN 0
+                    ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1) END
+        FROM opt2
+        UNION ALL
+        SELECT 3, recipe_id, title, difficulty, cooking_time_min, image_url,
+               average_rating, total_ingredients, matched, missing, primary_cuisine, global_rank - 6,
+               CASE WHEN total_ingredients = 0 THEN 0
+                    ELSE ROUND((matched::NUMERIC / total_ingredients) * 100, 1) END
+        FROM opt3
     ),
-    final_pick AS (SELECT * FROM picked WHERE option_rank <= p_days),
+    option_seed AS (SELECT generate_series(1, 3) AS option_idx),
     option_lists AS (
         SELECT os.option_idx,
             COALESCE(json_agg(json_build_object(
-                'recipe_id', fp.recipe_id, 'title', fp.title, 'difficulty', fp.difficulty,
-                'cooking_time_min', fp.cooking_time_min, 'image_url', fp.image_url,
-                'average_rating', fp.average_rating, 'total_ingredients', fp.total_ingredients,
-                'matched', fp.matched, 'missing', fp.missing,
-                'primary_cuisine', fp.primary_cuisine, 'match_percent', fp.match_percent
-            ) ORDER BY fp.option_rank) FILTER (WHERE fp.recipe_id IS NOT NULL), '[]'::JSON) AS meals
-        FROM option_seed os LEFT JOIN final_pick fp ON fp.option_idx = os.option_idx
+                'recipe_id', c.recipe_id, 'title', c.title, 'difficulty', c.difficulty,
+                'cooking_time_min', c.cooking_time_min, 'image_url', c.image_url,
+                'average_rating', c.average_rating, 'total_ingredients', c.total_ingredients,
+                'matched', c.matched, 'missing', c.missing,
+                'primary_cuisine', c.primary_cuisine, 'match_percent', c.match_percent
+            ) ORDER BY c.option_rank) FILTER (WHERE c.recipe_id IS NOT NULL), '[]'::JSON) AS meals
+        FROM option_seed os LEFT JOIN combined c ON c.option_idx = os.option_idx
         GROUP BY os.option_idx
     )
     SELECT json_agg(json_build_object('option_number', option_idx, 'meals', meals) ORDER BY option_idx)

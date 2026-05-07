@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { getRecipeDetails, toggleFavourite, getReviews, upsertReview, deleteReview } from '../api/RecipeApi';
 import { saveShoppingListLocally } from '../utils/shoppingListStore';
 import ConfirmModal from '../components/ConfirmModal';
-import { Heart, Clock, Flame, Check, X, ChefHat, Utensils, ArrowLeft, Star } from 'lucide-react';
+import { Heart, Clock, Flame, Check, X, ChefHat, Utensils, ArrowLeft, Star, ShoppingCart } from 'lucide-react';
 import StarRating from '../components/StarRating';
 import './RecipeDetail.css';
 
@@ -198,7 +198,7 @@ export default function RecipeDetail() {
             <h2 className="rd-section-title">Ingredients</h2>
             {ingredients.some(ing => ing.in_pantry === false || ing.in_pantry === 0) && (
               <button className="rd-shop-btn" onClick={handleGenerateShoppingList}>
-                🛒 Shopping List for Missing
+                <ShoppingCart size={14} /> Shopping List for Missing
               </button>
             )}
           </div>

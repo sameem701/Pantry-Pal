@@ -130,7 +130,7 @@
 .cr-step-num {
   width: 28px; height: 28px;
   border-radius: 50%;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   font-size: 0.8rem;
   font-weight: 700;
@@ -176,10 +176,10 @@
   font-family: var(--font-serif);
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
-.cr-tag:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+.cr-tag:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 .cr-tag.active {
-  background: var(--accent-orange);
-  border-color: var(--accent-orange);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
   color: #fff;
 }
 

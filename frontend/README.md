@@ -1,16 +1,25 @@
-# React + Vite
+# PantryPal — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite single-page application for PantryPal.
 
-Currently, two official plugins are available:
+> **Full setup instructions, feature list, and team contributions are in the [root README](../README.md).**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Quick Start
 
-## React Compiler
+```bash
+npm install
+npm run dev       # Vite dev server → http://localhost:5174
+npm run build     # Production build → dist/
+npm run preview   # Preview production build locally
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Key Directories
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| Path | Contents |
+|---|---|
+| `src/services/` | Page-level components (Dashboard, Pantry, RecipeDetail, MealPlanner, ShoppingList, CookingSession, etc.) |
+| `src/components/` | Shared UI components (ConfirmModal, StarRating, …) |
+| `src/api/` | Fetch wrappers for all backend endpoints |
+| `src/context/` | React context providers (AuthContext, ToastContext) |
+| `src/utils/` | Local-storage helpers, food-group classifier, nav guard |
+| `src/App.css` | Global design tokens (Deep Autumn palette, typography, spacing)

@@ -86,8 +86,7 @@ const markMealCooked = async (req, res) => {
         const result = await db.query(
             `UPDATE daily_meals
              SET is_cooked = TRUE
-             WHERE user_id = $1 AND date = $2 AND meal_type = $3 AND is_cooked = FALSE
-             RETURNING meal_id`,
+             WHERE user_id = $1 AND date = $2 AND meal_type = $3 AND is_cooked = FALSE`,
             [user_id, date, meal_type]
         );
         if (result.rowCount === 0) {

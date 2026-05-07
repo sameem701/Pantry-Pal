@@ -58,8 +58,8 @@
 .btn-today {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid var(--accent-orange);
-  color: var(--accent-orange);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
   background: transparent;
   font-size: 0.78rem;
   cursor: pointer;
@@ -141,8 +141,8 @@
 }
 .mp-tab:hover { color: var(--text-body); }
 .mp-tab.active {
-  color: var(--accent-orange);
-  border-bottom-color: var(--accent-orange);
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
 }
 
 /* -- Tab content --------------------------------------------------------------- */
@@ -192,14 +192,14 @@
 }
 .cal-day-header.today {
   background: rgba(232,98,42,0.06);
-  color: var(--accent-orange);
+  color: var(--accent-primary);
 }
 .day-name { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .day-date { display: block; font-size: 0.88rem; margin-top: 2px; }
 .today-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   display: inline-block;
   margin: 3px auto 0;
 }
@@ -297,7 +297,7 @@
 .chip-day  { color: var(--text-muted); font-size: 0.76rem; }
 .chip-title { color: var(--text-body); }
 .chip-apply {
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -473,7 +473,7 @@
   flex-direction: column;
   gap: 4px;
 }
-.nutrition-card--calories { border-color: var(--accent-orange); }
+.nutrition-card--calories { border-color: var(--accent-primary); }
 .nutrition-card--protein  { border-color: var(--accent-green);  }
 .nutrition-card--carbs    { border-color: var(--accent-purple); }
 .nutrition-card--fat      { border-color: var(--accent-warning); }
@@ -579,14 +579,14 @@
   transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
   user-select: none;
 }
-.tmpl-day-chip:hover { border-color: var(--accent-orange); }
+.tmpl-day-chip:hover { border-color: var(--accent-primary); }
 .tmpl-day-chip.selected {
-  border-color: var(--accent-orange);
+  border-color: var(--accent-primary);
   background: #fff4ee;
   box-shadow: 0 0 0 2px rgba(232,98,42,0.18);
 }
 .tmpl-day-chip.drag-highlight {
-  border-color: var(--accent-orange);
+  border-color: var(--accent-primary);
   background: #fff4ee;
   box-shadow: 0 0 0 2px rgba(232,98,42,0.35);
 }
@@ -610,7 +610,7 @@
 }
 .tmpl-day-chip-count {
   font-size: 0.7rem;
-  color: var(--accent-orange);
+  color: var(--accent-primary);
   font-family: var(--font-sans);
   font-weight: 600;
 }
@@ -827,7 +827,7 @@
 /* -- Button helpers ------------------------------------------------------------ */
 .btn-primary-lg {
   padding: 12px 28px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-md);
@@ -842,7 +842,7 @@
 
 .btn-primary-sm {
   padding: 8px 16px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
@@ -901,7 +901,7 @@
 
 .btn-sm-accent {
   padding: 5px 12px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
@@ -957,7 +957,7 @@
 .cal-day-header.past { opacity: 0.5; }
 .cal-slot.drag-over {
   background: rgba(232,98,42,0.12) !important;
-  outline: 2px dashed var(--accent-orange, #e8622a);
+  outline: 2px dashed var(--accent-primary, #e8622a);
   outline-offset: -2px;
 }
 .slot-drop-hint {
@@ -1026,7 +1026,7 @@
 .today-arrow {
   display: block;
   font-size: 0.8rem;
-  color: var(--accent-orange);
+  color: var(--accent-primary);
   margin-top: 2px;
   animation: bounce-arrow 1.2s ease-in-out infinite;
 }
@@ -1052,9 +1052,9 @@
   transition: background 0.12s, color 0.12s;
 }
 .sugg-option-tab.active {
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
-  border-color: var(--accent-orange);
+  border-color: var(--accent-primary);
 }
 
 /* -- Drag hint message -------------------------------------------------------- */
@@ -1094,7 +1094,7 @@
   color: var(--text-body, #333);
   box-sizing: border-box;
 }
-.mp-recipe-search:focus { outline: none; border-color: var(--accent-orange, #e8622a); }
+.mp-recipe-search:focus { outline: none; border-color: var(--accent-primary, #e8622a); }
 .mp-recipe-toggles {
   display: flex;
   border: 1px solid var(--border-default, #c8bdb5);
@@ -1112,7 +1112,7 @@
   font-family: var(--font-sans);
 }
 .mp-toggle-btn:not(:last-child) { border-right: 1px solid var(--border-default, #c8bdb5); }
-.mp-toggle-btn.active { background: var(--accent-orange, #e8622a); color: #fff; }
+.mp-toggle-btn.active { background: var(--accent-primary, #e8622a); color: #fff; }
 .mp-recipe-loading, .mp-recipe-empty {
   font-size: 0.85rem;
   color: var(--text-muted, #888);
@@ -1319,7 +1319,7 @@
   cursor: pointer;
   color: #856404;
 }
-.cal-day-header.apply-target { outline: 2px dashed var(--accent-orange, #e8622a); }
+.cal-day-header.apply-target { outline: 2px dashed var(--accent-primary, #e8622a); }
 .cal-day-header.apply-target:hover { background: rgba(232,98,42,0.08); }
 
 /* == Recipe list tabs (protein/carbs) ======================================== */
@@ -1416,7 +1416,7 @@
   border-radius: 8px;
   padding: 10px 14px;
 }
-.nut-day-row.nut-day-today  { border-color: var(--accent-orange, #e8622a); }
+.nut-day-row.nut-day-today  { border-color: var(--accent-primary, #e8622a); }
 .nut-day-row.nut-day-empty  { opacity: 0.65; }
 .nut-day-row.nut-day-missed { border-left: 3px solid #ffc107; }
 .nut-day-head {
@@ -1425,7 +1425,7 @@
   justify-content: space-between;
 }
 .nut-day-name   { font-size: 0.88rem; font-weight: 600; color: var(--text-heading); }
-.nut-day-cal    { font-size: 0.84rem; color: var(--accent-orange, #e8622a); font-weight: 600; }
+.nut-day-cal    { font-size: 0.84rem; color: var(--accent-primary, #e8622a); font-weight: 600; }
 .nut-day-status { font-size: 0.82rem; color: var(--text-muted); font-style: italic; }
 .nut-day-macros {
   display: flex;
@@ -1618,7 +1618,7 @@
 }
 .nut-day-empty  { opacity: 0.6; }
 .nut-day-missed { border-color: #ffc107; background: #fffdf0; }
-.nut-day-today  { border-color: var(--accent-orange, #e8622a); }
+.nut-day-today  { border-color: var(--accent-primary, #e8622a); }
 .nut-day-head {
   display: flex;
   justify-content: space-between;
@@ -1645,7 +1645,7 @@
 }
 .cal-day-header.col-in-plan.today {
   background: rgba(232, 98, 42, 0.13);
-  border-bottom-color: var(--accent-orange, #e8622a);
+  border-bottom-color: var(--accent-primary, #e8622a);
 }
 .cal-slot.col-in-plan.empty {
   background: rgba(232, 98, 42, 0.025);
@@ -1660,7 +1660,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent-orange, #e8622a);
+  background: var(--accent-primary, #e8622a);
   margin-left: 5px;
   vertical-align: middle;
   flex-shrink: 0;
@@ -1928,12 +1928,12 @@
   outline-offset: -2px;
 }
 .mp-recipe-card.recipe-selected {
-  outline: 2px solid var(--accent-orange, #e8622a);
+  outline: 2px solid var(--accent-primary, #e8622a);
   outline-offset: 1px;
   background: rgba(232, 98, 42, 0.06);
 }
 .suggestion-chip.selected {
-  outline: 2px solid var(--accent-orange, #e8622a);
+  outline: 2px solid var(--accent-primary, #e8622a);
   background: rgba(232, 98, 42, 0.06);
 }
 .chip-match {

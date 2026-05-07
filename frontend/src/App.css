@@ -8,9 +8,9 @@
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
   /* Sidebar */
-  --sidebar-bg:           #1a1a2e;
-  --sidebar-hover:        #252540;
-  --sidebar-active:       #252540;
+  --sidebar-bg:           #1f1b16;
+  --sidebar-hover:        #2a251e;
+  --sidebar-active:       rgba(56,142,109,0.12);
   --sidebar-divider:      rgba(255,255,255,0.08);
   --sidebar-width:        200px;
 
@@ -20,12 +20,20 @@
   --card-bg:              #f5f2ed;
 
   /* Accent palette — Deep Autumn */
-  --accent-orange:        #388e6d;
+  --accent-primary:       #388e6d;
+  --accent-primary-dark:  #2d6f5a;
+  --accent-warm:          #c97c28;
   --accent-green:         #388e6d;
   --accent-green-dark:    #2d6f5a;
   --accent-purple:        #5a4fcf;
   --accent-red:           #a04a3a;
   --accent-warning:       #b8860b;
+
+  /* Nutrition macro colors */
+  --macro-protein:        #2e9068;
+  --macro-carbs:          #5a4fcf;
+  --macro-fat:            #c97c28;
+  --macro-other:          #a04a3a;
 
   /* Meal-type colours */
   --breakfast-bg:         #fef5e7;
@@ -126,7 +134,7 @@ input, select, textarea {
   align-items: center;
   gap: 10px;
 }
-.sidebar-logo-icon { display: flex; align-items: center; color: var(--accent-orange); }
+.sidebar-logo-icon { display: flex; align-items: center; color: var(--accent-primary); }
 .sidebar-logo-text {
   color: #fff;
   font-size: 1.05rem;
@@ -160,6 +168,7 @@ input, select, textarea {
 .sidebar-item.active {
   background: var(--sidebar-active);
   color: #ffffff;
+  font-weight: 600;
 }
 .sidebar-icon  { display: flex; align-items: center; justify-content: center; width: 20px; flex-shrink: 0; }
 .sidebar-label { flex: 1; }
@@ -169,7 +178,7 @@ input, select, textarea {
   position: absolute;
   right: 0; top: 0; bottom: 0;
   width: 3px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   border-radius: 3px 0 0 3px;
 }
 
@@ -186,7 +195,7 @@ input, select, textarea {
 .sidebar-avatar {
   width: 28px; height: 28px;
   border-radius: 50%;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
@@ -217,8 +226,8 @@ input, select, textarea {
 }
 .sidebar-logout:hover {
   background: rgba(56,142,109,0.15);
-  color: var(--accent-orange);
-  border-color: var(--accent-orange);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 /* ── Error screen ──────────────────────────────────────────────────────────── */
@@ -239,7 +248,7 @@ input, select, textarea {
 .error-screen button {
   margin-top: 16px;
   padding: 8px 20px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-sm);
@@ -358,8 +367,10 @@ input, select, textarea {
 .confirm-icon {
   font-size: 2.5rem;
   text-align: center;
-  display: block;
+  display: flex;
+  justify-content: center;
   margin-bottom: 12px;
+  color: var(--accent-red);
 }
 .confirm-title {
   font-family: var(--font-serif);
@@ -424,7 +435,7 @@ input, select, textarea {
   align-items: center;
   gap: 6px;
   padding: 10px 20px;
-  background: var(--accent-orange);
+  background: var(--accent-primary);
   color: #fff;
   border: none;
   border-radius: var(--radius-md);
@@ -433,7 +444,7 @@ input, select, textarea {
   cursor: pointer;
   transition: background var(--transition);
 }
-.btn-primary:hover:not(:disabled) { background: #2d7056; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-primary-dark); }
 .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .btn-secondary {
@@ -491,7 +502,7 @@ input, select, textarea {
 }
 .form-input:focus, .form-select:focus, .form-textarea:focus {
   outline: none;
-  border-color: var(--accent-orange);
+  border-color: var(--accent-primary);
 }
 .form-textarea { resize: vertical; min-height: 80px; }
 .form-error { color: var(--accent-red); font-size: 0.82rem; margin-top: 6px; }
@@ -519,6 +530,14 @@ input.input-invalid, select.input-invalid {
   text-align: center;
   gap: 12px;
 }
-.empty-state-icon { font-size: 3rem; }
+.empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
 .empty-state-title { font-size: 1.1rem; color: var(--text-secondary); }
 .empty-state-body  { font-size: 0.88rem; max-width: 320px; line-height: 1.5; }
